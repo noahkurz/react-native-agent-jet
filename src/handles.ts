@@ -17,6 +17,8 @@ export type QueryClientLike = {
 	};
 };
 
+import { configureRedaction, type RedactOption } from "./redact";
+
 export type StateValue = unknown | (() => unknown);
 
 export type ExpoRouterLike = {
@@ -28,6 +30,8 @@ export type ExpoRouterLike = {
 };
 
 export type AgentJetOptions = {
+	/** Redact secrets from captured logs and network bodies. Default true; false disables. */
+	redact?: RedactOption;
 	url?: string;
 	appName?: string;
 	navigationRef?: NavigationHandle;
@@ -45,6 +49,7 @@ const shared: Shared = ((globalThis as { __reactNativeAgentJetHandles?: Shared }
 
 export function setOptions(next: AgentJetOptions) {
 	shared.options = next;
+	configureRedaction(next.redact);
 }
 
 export function registerAgentJetState(key: string, value: StateValue): () => void {

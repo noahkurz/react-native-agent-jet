@@ -333,7 +333,7 @@ iOS itself is macOS-only because the iOS Simulator is.
 - **iOS real taps are slow.** AXe serializes the whole accessibility tree before each gesture (several seconds on busy screens), so `press` defaults to firing `onPress` through React. Android taps via `adb` are ~100ms. Keystrokes are instant on both.
 - **Physical devices** need the host's IP on both ends: start the server with `AGENT_JET_HOST=0.0.0.0` and point the app at it with `useAgentJet({ url: "ws://<your-mac-ip>:8765" })`. The server otherwise listens on localhost only, and the connection is unauthenticated, so only do that on a network you trust. Simulators and emulators need neither.
 - **Android text** via `adb` is ASCII-only; `set_text` covers everything else.
-- **`logs` and `network` show real data** — console output and HTTP bodies, which can include auth tokens. That goes to your agent, so be deliberate on apps with live credentials.
+- **`logs` and `network` redact secrets by default** — values under keys like `password`, `token`, `apiKey` or `cookie`, plus JWTs and `Bearer …` values, become `[redacted]` before they are ever stored. Field names, status, timing and everything else stay intact, so the agent can still debug the request. Pass `redact: false` to `useAgentJet` for full fidelity, or `redact: { keys: ["myCustomSecret"] }` to add your own.
 - **iOS and Android can run together** — one app per platform. Pass `platform` per call to target either; the active app is used otherwise. See [Driving iOS and Android at once](#driving-ios-and-android-at-once).
 - **Fiber internals** aren't a public React API — but they're the same fields React DevTools depends on, verified against React 19 / React Native 0.85 (New Architecture).
 

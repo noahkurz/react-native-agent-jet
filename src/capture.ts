@@ -1,4 +1,5 @@
 import type { LogEntry, NetworkEntry } from "./protocol";
+import { redactBody, redactText, redactUrl } from "./redact";
 
 const LOG_LIMIT = 500;
 const NETWORK_LIMIT = 200;
@@ -37,12 +38,12 @@ function formatArg(arg: unknown): string {
 }
 
 function pushLog(entry: Omit<LogEntry, "seq" | "at">) {
-	logs.push({ seq: ++shared.seq, at: Date.now(), ...entry });
+	logs.push({ seq: ++shared.seq, at: Date.now(), ...entry, message: redactText(entry.message) });
 	if (logs.length > LOG_LIMIT) logs.splice(0, logs.length - LOG_LIMIT);
 }
 
 function pushNetwork(entry: Omit<NetworkEntry, "seq" | "at">): NetworkEntry {
-	const full = { seq: ++shared.seq, at: Date.now(), ...entry };
+	const full = { seq: ++shared.seq, at: Date.now(), ...entry, url: redactUrl(entry.url) };
 	network.push(full);
 	if (network.length > NETWORK_LIMIT) network.splice(0, network.length - NETWORK_LIMIT);
 	return full;
@@ -50,7 +51,8 @@ function pushNetwork(entry: Omit<NetworkEntry, "seq" | "at">): NetworkEntry {
 
 function truncate(value: unknown): string | undefined {
 	if (value === undefined || value === null) return undefined;
-	const text = typeof value === "string" ? value : formatArg(value);
+	const raw = typeof value === "string" ? value : formatArg(value);
+	const text = redactBody(raw);
 	return text.length > BODY_LIMIT ? `${text.slice(0, BODY_LIMIT)}…` : text;
 }
 
