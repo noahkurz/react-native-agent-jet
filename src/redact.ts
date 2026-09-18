@@ -1,4 +1,11 @@
-export type RedactOption = boolean | { keys?: string[] };
+export type RedactOption =
+	| boolean
+	| {
+			/** Extra field names to redact, matched case- and separator-insensitively. Added to the defaults. */
+			keys?: string[];
+			/** Extra value shapes to redact anywhere they appear (e.g. /sk_live_[A-Za-z0-9]+/). */
+			patterns?: RegExp[];
+	  };
 
 const DEFAULT_KEYS = [
 	"password",
@@ -23,9 +30,14 @@ const MAX_DEPTH = 8;
 const JWT = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g;
 const BEARER = /\b(Bearer|Basic|Token)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 
-type Config = { enabled: boolean; keys: string[] };
+type Config = { enabled: boolean; keys: string[]; patterns: RegExp[] };
 
-const config: Config = { enabled: true, keys: DEFAULT_KEYS };
+const config: Config = { enabled: true, keys: DEFAULT_KEYS, patterns: [] };
+
+/** User patterns must be global so every occurrence is replaced, not just the first. */
+function globalize(pattern: RegExp): RegExp {
+	return pattern.flags.includes("g") ? pattern : new RegExp(pattern.source, `${pattern.flags}g`);
+}
 
 export function configureRedaction(option: RedactOption | undefined) {
 	if (option === false) {
@@ -35,6 +47,7 @@ export function configureRedaction(option: RedactOption | undefined) {
 	config.enabled = true;
 	const extra = option && option !== true && option.keys ? option.keys.map(normalizeKey).filter(Boolean) : [];
 	config.keys = extra.length ? [...DEFAULT_KEYS, ...extra] : DEFAULT_KEYS;
+	config.patterns = option && option !== true && option.patterns ? option.patterns.map(globalize) : [];
 }
 
 function normalizeKey(key: string): string {
@@ -49,7 +62,9 @@ function isSensitiveKey(key: string): boolean {
 /** Scrub secrets that appear in free text: JWTs and `Bearer <token>` style values. */
 export function redactText(text: string): string {
 	if (!config.enabled) return text;
-	return text.replace(JWT, "[redacted jwt]").replace(BEARER, (_m, scheme: string) => `${scheme} ${REDACTED}`);
+	let out = text.replace(JWT, "[redacted jwt]").replace(BEARER, (_m, scheme: string) => `${scheme} ${REDACTED}`);
+	for (const pattern of config.patterns) out = out.replace(pattern, REDACTED);
+	return out;
 }
 
 function redactStructured(value: unknown, depth: number): unknown {
@@ -96,5 +111,5 @@ export function redactUrl(url: string): string {
 			return isSensitiveKey(key) ? `${key}=${REDACTED}` : pair;
 		})
 		.join("&");
-	return `${path}?${query}`;
+	return redactText(`${path}?${query}`);
 }
