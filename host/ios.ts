@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { Button, Device, Point } from "./device.js";
-import { sizeScreenshot } from "./image.js";
+import { sizeScreenshot, type Screenshot } from "./image.js";
 import { PACKAGE_NAME } from "./constants.js";
 
 const exec = promisify(execFile);
@@ -63,7 +63,7 @@ export async function screenshotDir(): Promise<string> {
 	return dir;
 }
 
-export async function screenshot(targetWidth: number | null): Promise<{ path: string; width: number }> {
+export async function screenshot(targetWidth: number | null): Promise<Screenshot> {
 	const path = join(await screenshotDir(), `screen-${Date.now()}.png`);
 	await run("xcrun", ["simctl", "io", await bootedUdid(), "screenshot", path]);
 	return sizeScreenshot(path, targetWidth);

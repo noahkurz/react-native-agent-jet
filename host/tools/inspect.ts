@@ -37,7 +37,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 		"screenshot",
 		{
 			description:
-				"Capture the device screen. The image is scaled so that 1 image pixel = 1 point (dp on Android), so coordinates you read off it can be passed straight to tap and swipe.",
+				"Capture the device screen. When the app is connected the image is scaled so 1 image pixel = 1 point (dp on Android) and coordinates read off it can be passed straight to tap and swipe. The reply says which scale was used.",
 			inputSchema: {
 				width: z.number().int().optional().describe("Override the output width in pixels"),
 				platform: platformSchema,
@@ -50,7 +50,12 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
-					{ type: "text", text: `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt)` },
+					{
+						type: "text",
+						text: shot.inPoints
+							? `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt — safe for tap/swipe coordinates)`
+							: `Saved to ${shot.path} (${shot.width}px wide, native resolution — the device scale is unknown, so these are pixels, not points; connect the app or pass width to get point coordinates)`,
+					},
 				],
 			};
 		},

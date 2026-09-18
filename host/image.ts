@@ -40,17 +40,26 @@ export async function downscaleIfPossible(path: string, nativeWidth: number, tar
 	return targetWidth;
 }
 
+export type Screenshot = {
+	path: string;
+	width: number;
+	/** True when one image pixel equals one point, so coordinates can be used for taps directly. */
+	inPoints: boolean;
+};
+
 /**
- * Resolve a captured PNG to its final width. `targetWidth` is what the caller wants (usually the
- * app's width in points). When it is unknown, the image is left at native resolution rather than
- * downscaled by a guessed scale factor.
+ * Resolve a captured PNG to its final width. `targetWidth` is the width in points the caller wants
+ * (normally the connected app's). When neither it nor the device scale is known, the image is left
+ * at native resolution — and reported as such — rather than downscaled by a guessed factor.
  */
 export async function sizeScreenshot(
 	path: string,
 	targetWidth: number | null,
 	deviceScale?: number,
-): Promise<{ path: string; width: number }> {
+): Promise<Screenshot> {
 	const native = await pngWidth(path);
-	const target = targetWidth ?? (deviceScale ? Math.round(native / deviceScale) : native);
-	return { path, width: await downscaleIfPossible(path, native, target) };
+	const pointWidth = targetWidth ?? (deviceScale ? Math.round(native / deviceScale) : null);
+	if (pointWidth === null) return { path, width: native, inPoints: false };
+	const width = await downscaleIfPossible(path, native, pointWidth);
+	return { path, width, inPoints: width === pointWidth };
 }

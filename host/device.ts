@@ -1,3 +1,5 @@
+import type { Screenshot } from "./image.js";
+
 export type Point = { x: number; y: number };
 
 export type Platform = "ios" | "android";
@@ -9,7 +11,7 @@ export type Device = {
 	name(): Promise<string | null>;
 	hasInput(): Promise<boolean>;
 	inputHint: string;
-	screenshot(targetWidth: number | null): Promise<{ path: string; width: number }>;
+	screenshot(targetWidth: number | null): Promise<Screenshot>;
 	tap(point: Point): Promise<void>;
 	tapAccessible?(selector: { id?: string; label?: string }): Promise<void>;
 	typeText(text: string): Promise<void>;

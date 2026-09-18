@@ -42,11 +42,13 @@ export class AppConnection {
 		});
 	}
 
+	/**
+	 * The app tools act on. A platform chosen with select_platform is honoured strictly: if it is not
+	 * connected this returns nothing, so callers wait for (or report) that platform instead of
+	 * silently driving the other one.
+	 */
 	get active(): Connection | null {
-		if (this.preferred) {
-			const match = this.connections.find((connection) => connection.device.platform === this.preferred);
-			if (match) return match;
-		}
+		if (this.preferred) return this.connectionFor(this.preferred);
 		return this.connections[this.connections.length - 1] ?? null;
 	}
 
@@ -123,12 +125,13 @@ export class AppConnection {
 	}
 
 	private waitForConnection(platform?: Platform, timeoutMs = CONNECT_WAIT_MS): Promise<Connection> {
-		const existing = this.connectionFor(platform);
+		const wanted = platform ?? this.preferred ?? undefined;
+		const existing = this.connectionFor(wanted);
 		if (existing) return Promise.resolve(existing);
 		return new Promise((resolve, reject) => {
 			const timer = setTimeout(() => {
 				this.waiters = this.waiters.filter((waiter) => waiter !== wake);
-				const want = platform ? `${platform} app` : "app";
+				const want = wanted ? `${wanted} app` : "app";
 				reject(
 					new Error(
 						`No ${want} connected on ws://localhost:${this.port}. Is it running in a dev build with useAgentJet() called?`,
@@ -136,7 +139,7 @@ export class AppConnection {
 				);
 			}, timeoutMs);
 			const wake = () => {
-				const match = this.connectionFor(platform);
+				const match = this.connectionFor(wanted);
 				if (!match) return;
 				clearTimeout(timer);
 				this.waiters = this.waiters.filter((waiter) => waiter !== wake);
