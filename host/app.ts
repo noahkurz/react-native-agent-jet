@@ -4,6 +4,7 @@ import type { Platform } from "./device.js";
 
 const REQUEST_TIMEOUT_MS = 15000;
 const CONNECT_WAIT_MS = 6000;
+const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 
 type Pending = {
 	socket: WebSocket;
@@ -22,7 +23,15 @@ export class AppConnection {
 	preferred: Platform | null = (process.env.AGENT_JET_PLATFORM as Platform | undefined) ?? null;
 
 	constructor(readonly port: number) {
-		const server = new WebSocketServer({ port });
+		const host = process.env.AGENT_JET_HOST ?? "127.0.0.1";
+		const server = new WebSocketServer({ port, host });
+		if (!LOOPBACK.has(host)) {
+			process.stderr.write(
+				`[agent-jet-mcp] WARNING: listening on ${host}, which is reachable from your network. ` +
+					`There is no authentication, so anyone who can reach port ${port} can impersonate your app. ` +
+					`Only do this on a trusted network.\n`,
+			);
+		}
 		server.on("connection", (socket) => this.accept(socket));
 		server.on("error", (error) => {
 			process.stderr.write(`[agent-jet-mcp] websocket server error: ${error.message}\n`);

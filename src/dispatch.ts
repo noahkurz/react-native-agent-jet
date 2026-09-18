@@ -53,7 +53,7 @@ const handlers: Handlers = {
 };
 
 export async function dispatch(method: string, params: unknown): Promise<unknown> {
-	const handler = handlers[method as MethodName] as ((params: unknown) => unknown) | undefined;
-	if (!handler) throw new Error(`Unknown method "${method}"`);
+	if (!Object.hasOwn(handlers, method)) throw new Error(`Unknown method "${method}"`);
+	const handler = handlers[method as MethodName] as (params: unknown) => unknown;
 	return handler(params ?? {});
 }
