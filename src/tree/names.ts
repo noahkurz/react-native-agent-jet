@@ -9,6 +9,8 @@ export const RN_TEXT = "RCTText";
 export const RN_SCROLL_VIEW = "RCTScrollView";
 /** react-native-screens stack: only its last child is the screen actually on top. */
 export const RN_SCREEN_STACK = "RNSScreenStack";
+/** Only react-native-screens gives `active`/`activityState` their "is this screen showing" meaning. */
+export const RN_SCREEN_PREFIX = "RNSScreen";
 
 /** Names we report to the agent, chosen to match what a developer would call them. */
 export const TEXT_TYPE = "Text";

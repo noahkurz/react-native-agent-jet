@@ -110,7 +110,20 @@ describe("what the walk hides", () => {
 	});
 
 	test("skips an inactive navigator screen", () => {
-		mountTree(fiber({}, [host("View", { activityState: 0 }, [host("RCTText", {}, [textNode("behind")])])]));
+		// react-navigation renders react-native-screens, so activityState lands on an RNSScreen host
+		mountTree(fiber({}, [host("RNSScreen", { activityState: 0 }, [host("RCTText", {}, [textNode("behind")])])]));
+		expect(snapshot().roots).toHaveLength(0);
+	});
+
+	test("only react-native-screens may hide a subtree with active={false}", () => {
+		// regression: any component taking an `active` prop (tabs, chips, carousels) had its whole
+		// subtree hidden from the agent
+		mountTree(fiber({}, [host("Chip", { active: false }, [host("RCTText", {}, [textNode("Neat")])])]));
+		expect(snapshot().roots.map((n) => n.text)).toEqual(["Neat"]);
+	});
+
+	test("an inactive screens screen is still skipped", () => {
+		mountTree(fiber({}, [host("RNSScreen", { active: 0 }, [host("RCTText", {}, [textNode("behind")])])]));
 		expect(snapshot().roots).toHaveLength(0);
 	});
 
@@ -127,6 +140,49 @@ describe("what the walk hides", () => {
 		mountTree(fiber({}, [stack]));
 		const texts = snapshot().roots.map((n) => n.text);
 		expect(texts).toEqual(["on top"]);
+	});
+});
+
+describe("collapsing wrappers", () => {
+	test("does not merge a pressable child that has its own handler", () => {
+		// regression: merging them meant pressing the node fired the outer handler while the tree
+		// showed the inner one
+		const outer = () => {};
+		const inner = () => {};
+		mountTree(
+			fiber({}, [
+				host("View", { onPress: outer }, [host("View", { onPress: inner }, [host("RCTText", {}, [textNode("Row")])])]),
+			]),
+		);
+		const root = snapshot().roots[0]!;
+		expect(root.children).toHaveLength(1);
+		expect(root.children[0]!.text).toBe("Row");
+	});
+
+	test("merges a wrapper that shares the same handler", () => {
+		const shared = () => {};
+		mountTree(
+			fiber({}, [
+				host("View", { onPress: shared }, [
+					host("View", { onPress: shared }, [host("RCTText", {}, [textNode("Save")])]),
+				]),
+			]),
+		);
+		const root = snapshot().roots[0]!;
+		expect(root.text).toBe("Save");
+		expect(root.children).toHaveLength(0);
+	});
+
+	test("never absorbs a child that is an input", () => {
+		const shared = () => {};
+		mountTree(
+			fiber({}, [
+				host("View", { onPress: shared }, [host("RCTSinglelineTextInputView", { onPress: shared, value: "x" })]),
+			]),
+		);
+		const root = snapshot().roots[0]!;
+		const input = root.children[0] ?? root;
+		expect(input.input).toBe(true);
 	});
 });
 

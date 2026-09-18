@@ -11,6 +11,7 @@ import {
 	SCROLL_VIEW_TYPE,
 	TEXT_INPUT_TYPE,
 	TEXT_TYPE,
+	RN_SCREEN_PREFIX,
 } from "./names";
 import type { Fiber, ScrollInstance, SemanticNode, Snapshot } from "./types";
 
@@ -91,8 +92,18 @@ function propsOf(fiber: Fiber): Props | null {
 	return props && typeof props === "object" ? (props as Props) : null;
 }
 
-function isHiddenSubtree(props: Props): boolean {
-	if (props.activityState === 0 || props.active === 0 || props.active === false) return true;
+/**
+ * `active` is an ordinary prop name (tabs, chips, carousels all use it), so only react-native-screens
+ * is allowed to mean "this subtree is off screen" by it. Otherwise a chip with active={false} would
+ * hide everything inside it from the agent.
+ */
+function isInactiveScreen(name: string, props: Props): boolean {
+	if (!name.startsWith(RN_SCREEN_PREFIX)) return false;
+	return props.activityState === 0 || props.active === 0 || props.active === false;
+}
+
+function isHiddenSubtree(name: string, props: Props): boolean {
+	if (isInactiveScreen(name, props)) return true;
 	if (props.accessibilityElementsHidden === true || props["aria-hidden"] === true) return true;
 	if (props.importantForAccessibility === "no-hide-descendants") return true;
 	const style = props.style
@@ -169,8 +180,8 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 		return;
 	}
 	const props = propsOf(fiber);
-	if (props && isHiddenSubtree(props)) return;
 	const name = nameOf(fiber);
+	if (props && isHiddenSubtree(name, props)) return;
 	if (name === RN_SCREEN_STACK && fiber.child) {
 		visit(lastSibling(fiber.child), parent, all);
 		return;
@@ -216,9 +227,13 @@ function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 		(!only.testID || only.testID === semantic.node.testID) &&
 		(!only.label || only.label === semantic.node.label) &&
 		(!only.text || !semantic.node.text);
+	// Only collapse when the child is the same control: same handler, and nothing extra to lose.
 	const absorbsWrapper =
 		semantic.node.pressable === true &&
 		only.pressable === true &&
+		onlySemantic.onPress === semantic.onPress &&
+		!only.input &&
+		!only.scrollable &&
 		!semantic.node.text &&
 		(!only.testID || only.testID === semantic.node.testID) &&
 		(!only.label || only.label === semantic.node.label);
