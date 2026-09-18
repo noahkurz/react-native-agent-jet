@@ -23,9 +23,11 @@ afterEach(async () => {
 
 /** Connect a fake app that answers every request with `result`. */
 function fakeApp(port: number, platform: "ios" | "android", result: unknown = { ok: true }): Promise<WebSocket> {
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
 		const socket = new WebSocket(`ws://127.0.0.1:${port}`);
 		opened.push(socket);
+		// without this a failed connection is an unhandled error that kills the test worker
+		socket.on("error", reject);
 		socket.on("open", () => {
 			socket.send(
 				JSON.stringify({
