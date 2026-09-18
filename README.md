@@ -333,19 +333,18 @@ iOS itself is macOS-only because the iOS Simulator is.
 - **iOS real taps are slow.** AXe serializes the whole accessibility tree before each gesture (several seconds on busy screens), so `press` defaults to firing `onPress` through React. Android taps via `adb` are ~100ms. Keystrokes are instant on both.
 - **Physical devices** need the host's IP on both ends: start the server with `AGENT_JET_HOST=0.0.0.0` and point the app at it with `useAgentJet({ url: "ws://<your-mac-ip>:8765" })`. The server otherwise listens on localhost only, and the connection is unauthenticated, so only do that on a network you trust. Simulators and emulators need neither.
 - **Android text** via `adb` is ASCII-only; `set_text` covers everything else.
-- **`logs` and `network` redact secrets by default** — values under keys like `password`, `token`, `apiKey` or `cookie`, plus JWTs and `Bearer …` values, become `[redacted]` before they are ever stored. Field names, status, timing and everything else stay intact, so the agent can still debug the request. Extend or disable it through `useAgentJet`:
+- **`logs` and `network` try to redact secrets — finishing the job is up to you.** Common cases are handled: values under keys like `password`, `token`, `apiKey` or `cookie`, plus JWTs and `Bearer …` values, are replaced with `[redacted]` before anything is stored. Treat that as a convenience, not a guarantee. The package cannot know what counts as sensitive in your app, and anything it does not recognise is passed through to your agent as-is, so **redacting everything your application needs redacted is your responsibility.** Field names, status and timing are always preserved, so the agent can still debug the request.
 
-  ```ts
-  redact: false; // full fidelity, no scrubbing
-  redact: {
-  	keys: ["memberNumber", "policy_id"];
-  } // extra field names
-  redact: {
-  	patterns: [/sk_live_[A-Za-z0-9]+/];
-  } // extra value shapes, anywhere they appear
+  ```tsx
+  useAgentJet({
+  	redact: {
+  		keys: ["memberNumber", "policy_id"], // extra field names
+  		patterns: [/sk_live_[A-Za-z0-9]+/], // extra value shapes, anywhere they appear
+  	},
+  });
   ```
 
-  Keys match case- and separator-insensitively; patterns catch secrets sitting under innocuous field names. Both are added to the defaults rather than replacing them, and patterns are applied to every captured body, so keep them anchored and cheap.
+  Keys match case- and separator-insensitively, patterns catch secrets sitting under innocuous field names, and both add to the defaults rather than replacing them. Patterns run against every captured body, so keep them anchored and cheap. Pass `redact: false` to disable scrubbing entirely.
 
 - **iOS and Android can run together** — one app per platform. Pass `platform` per call to target either; the active app is used otherwise. See [Driving iOS and Android at once](#driving-ios-and-android-at-once).
 - **Fiber internals** aren't a public React API — but they're the same fields React DevTools depends on, verified against React 19 / React Native 0.85 (New Architecture).

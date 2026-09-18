@@ -1,3 +1,11 @@
+/**
+ * Best-effort scrubbing of secrets from captured logs and network traffic.
+ *
+ * This covers common shapes (sensitive-looking field names, JWTs, `Bearer` values) so that
+ * routine debugging does not leak credentials. It is NOT a guarantee: it cannot know what is
+ * sensitive in a given app, and anything unrecognised passes through. Callers are expected to
+ * extend `keys`/`patterns` for their own data.
+ */
 export type RedactOption =
 	| boolean
 	| {

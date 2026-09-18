@@ -30,7 +30,10 @@ export type ExpoRouterLike = {
 };
 
 export type AgentJetOptions = {
-	/** Redact secrets from captured logs and network bodies. Default true; false disables. */
+	/**
+	 * Best-effort redaction of secrets in captured logs and network bodies (default on).
+	 * Covers common cases only — extend with `keys`/`patterns` for your app, or `false` to disable.
+	 */
 	redact?: RedactOption;
 	url?: string;
 	appName?: string;
