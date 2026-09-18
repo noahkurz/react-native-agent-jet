@@ -480,7 +480,8 @@ export function registerTools(server: McpServer, app: AppConnection) {
 			return text(
 				entries
 					.map((entry) => {
-						const head = `${entry.seq} ${entry.method} ${entry.url} → ${entry.status ?? "pending"}${entry.durationMs !== undefined ? ` ${entry.durationMs}ms` : ""}${entry.error ? ` (${entry.error})` : ""}`;
+						const outcome = entry.status ?? (entry.error ? "failed" : "pending");
+						const head = `${entry.seq} ${entry.method} ${entry.url} → ${outcome}${entry.durationMs !== undefined ? ` ${entry.durationMs}ms` : ""}${entry.error ? ` (${entry.error})` : ""}`;
 						if (!bodies) return head;
 						return [
 							head,
