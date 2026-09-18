@@ -36,8 +36,13 @@ export async function downscaleIfPossible(path: string, nativeWidth: number, tar
 	targetWidth = Math.round(targetWidth);
 	if (targetWidth >= nativeWidth) return nativeWidth;
 	if (!(await hasSips())) return nativeWidth;
-	await exec("sips", ["--resampleWidth", String(targetWidth), path]);
-	return targetWidth;
+	try {
+		await exec("sips", ["--resampleWidth", String(targetWidth), path]);
+		return targetWidth;
+	} catch {
+		// A screenshot at the wrong size is far more useful than no screenshot at all.
+		return nativeWidth;
+	}
 }
 
 export type Screenshot = {
@@ -58,8 +63,10 @@ export async function sizeScreenshot(
 	deviceScale?: number,
 ): Promise<Screenshot> {
 	const native = await pngWidth(path);
-	const pointWidth = targetWidth ?? (deviceScale ? Math.round(native / deviceScale) : null);
-	if (pointWidth === null) return { path, width: native, inPoints: false };
+	const requested = targetWidth ?? (deviceScale ? native / deviceScale : null);
+	if (requested === null) return { path, width: native, inPoints: false };
+	// Android reports a fractional width in dp, so compare against whole pixels.
+	const pointWidth = Math.round(requested);
 	const width = await downscaleIfPossible(path, native, pointWidth);
 	return { path, width, inPoints: width === pointWidth };
 }

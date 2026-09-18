@@ -42,7 +42,7 @@ function isActionable(node: UINode): boolean {
 export function filterTree(nodes: UINode[], opts: { interactive?: boolean; maxDepth?: number }, depth = 0): UINode[] {
 	const result: UINode[] = [];
 	for (const node of nodes) {
-		const atDepthLimit = opts.maxDepth !== undefined && depth >= opts.maxDepth;
+		const atDepthLimit = opts.maxDepth !== undefined && depth + 1 >= opts.maxDepth;
 		const children = atDepthLimit ? [] : filterTree(node.children, opts, depth + 1);
 		if (opts.interactive && !isActionable(node) && children.length === 0) continue;
 		result.push({ ...node, children });

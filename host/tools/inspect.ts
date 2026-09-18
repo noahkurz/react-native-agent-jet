@@ -71,7 +71,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 					.boolean()
 					.optional()
 					.describe("Only actionable nodes (pressable, input, scroll) and their ancestors — much smaller"),
-				maxDepth: z.number().int().optional().describe("Cap nesting depth"),
+				maxDepth: z.number().int().optional().describe("Maximum number of levels to return (1 = top-level nodes only)"),
 				frames: z.boolean().optional().describe("Include on-screen coordinates (default false)"),
 				includeOffscreen: z.boolean().optional().describe("Include elements that are mounted but off screen"),
 				changesSince: z
