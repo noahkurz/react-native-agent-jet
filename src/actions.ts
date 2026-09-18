@@ -1,4 +1,4 @@
-import { describeNode, find, findOne, publicInstanceOf, type Fiber, type SemanticNode } from "./fiber";
+import { describeNode, find, findOne, publicInstanceOf, type Fiber, type SemanticNode } from "./tree";
 import type { Target, UINode } from "./protocol";
 
 function syntheticPressEvent() {

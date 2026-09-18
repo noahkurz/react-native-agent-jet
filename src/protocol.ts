@@ -89,7 +89,6 @@ export type BridgeMethods = {
 	};
 	network: { params: { since?: number }; result: NetworkEntry[] };
 	clear: { params: Record<string, never>; result: { ok: true } };
-	inspect: { params: { target: Target }; result: unknown };
 	reload: { params: Record<string, never>; result: { ok: true } };
 };
 

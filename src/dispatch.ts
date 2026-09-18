@@ -1,7 +1,7 @@
 import { DevSettings, Dimensions, PixelRatio, Platform } from "react-native";
 import { focus, press, scroll, setText } from "./actions";
 import { clearCapture, readLogs, readNetwork } from "./capture";
-import { describeNode, find, inspect, tree } from "./fiber";
+import { describeNode, find, tree } from "./tree";
 import { appName, goBack, navigateTo, navigationSummary, readState } from "./handles";
 import type { BridgeMethods, DeviceInfo, MethodName } from "./protocol";
 
@@ -45,7 +45,6 @@ const handlers: Handlers = {
 		clearCapture();
 		return { ok: true };
 	},
-	inspect: ({ target }) => inspect(target),
 	reload: () => {
 		setTimeout(() => DevSettings.reload(), 50);
 		return { ok: true };
