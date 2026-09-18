@@ -328,23 +328,12 @@ iOS itself is macOS-only because the iOS Simulator is.
 
 ---
 
-## Security
-
-This is a development tool, so it is worth being precise about what it exposes.
-
-- **Nothing ships to production.** The bridge compiles out of release builds entirely (see [Production](#production)), so your users are never exposed. The risk surface is your dev machine while you are working.
-- **The server listens on loopback only.** The MCP server binds to `127.0.0.1`, so nothing on your network can reach it. There is no authentication on the WebSocket, so if you opt into a wider bind with `AGENT_JET_HOST=0.0.0.0` (needed for physical devices), anyone who can reach the port can impersonate your app and feed your agent fabricated screen data. The server prints a warning when you do that. Only do it on a network you trust.
-- **No install scripts.** Installing the package runs nothing — there is no `preinstall`, `install`, `postinstall`, or `prepare` hook. No native compilation, no network calls at install time.
-- **No shell is invoked.** Every call to `simctl`, `axe`, and `adb` goes through `execFile` with an argument array, so tool inputs are never interpreted by a shell. Strings passed to the Android device shell are quoted, and coordinates and keycodes are validated numbers.
-- **No file access is exposed.** No tool takes a filesystem path. Screenshots are written to generated paths in your temp directory.
-- **`logs` and `network` can contain secrets.** They capture console output and HTTP request and response bodies from your app, which may include auth tokens or personal data. That content goes to your agent, and therefore to whatever model provider it uses. Be deliberate about that on apps with real credentials.
-- **`init` can write outside your project.** Most clients are configured per project, but `codex` and `windsurf` store config in your home directory. It prints the path and marks it `(global)` when it does.
-
 ## Caveats
 
 - **iOS real taps are slow.** AXe serializes the whole accessibility tree before each gesture (several seconds on busy screens), so `press` defaults to firing `onPress` through React. Android taps via `adb` are ~100ms. Keystrokes are instant on both.
-- **Physical devices** need the host's IP on both ends: start the server with `AGENT_JET_HOST=0.0.0.0` and point the app at it with `useAgentJet({ url: "ws://<your-mac-ip>:8765" })`. See [Security](#security) before doing this on a network you do not trust. Simulators and emulators need neither.
+- **Physical devices** need the host's IP on both ends: start the server with `AGENT_JET_HOST=0.0.0.0` and point the app at it with `useAgentJet({ url: "ws://<your-mac-ip>:8765" })`. The server otherwise listens on localhost only, and the connection is unauthenticated, so only do that on a network you trust. Simulators and emulators need neither.
 - **Android text** via `adb` is ASCII-only; `set_text` covers everything else.
+- **`logs` and `network` show real data** — console output and HTTP bodies, which can include auth tokens. That goes to your agent, so be deliberate on apps with live credentials.
 - **iOS and Android can run together** — one app per platform. Pass `platform` per call to target either; the active app is used otherwise. See [Driving iOS and Android at once](#driving-ios-and-android-at-once).
 - **Fiber internals** aren't a public React API — but they're the same fields React DevTools depends on, verified against React 19 / React Native 0.85 (New Architecture).
 
