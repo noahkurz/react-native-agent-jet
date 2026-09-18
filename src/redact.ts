@@ -33,11 +33,16 @@ export function configureRedaction(option: RedactOption | undefined) {
 		return;
 	}
 	config.enabled = true;
-	config.keys = option && option !== true && option.keys ? [...DEFAULT_KEYS, ...option.keys] : DEFAULT_KEYS;
+	const extra = option && option !== true && option.keys ? option.keys.map(normalizeKey).filter(Boolean) : [];
+	config.keys = extra.length ? [...DEFAULT_KEYS, ...extra] : DEFAULT_KEYS;
+}
+
+function normalizeKey(key: string): string {
+	return key.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
 function isSensitiveKey(key: string): boolean {
-	const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, "");
+	const normalized = normalizeKey(key);
 	return config.keys.some((needle) => normalized.includes(needle));
 }
 
