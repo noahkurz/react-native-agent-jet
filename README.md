@@ -218,7 +218,7 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 | `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                      |
 | `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                             |
 | `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                           |
-| `screenshot`        | A PNG, for when you need to _see_. Scaled so 1px = 1pt (dp) when the app is connected; otherwise native pixels, and the reply says which                                                                                                    |
+| `screenshot`        | A PNG, for when you need to _see_. Usually scaled so 1px = 1pt (dp), but it falls back to native pixels when the scale is unknown or no resizer is available. **The reply states which**, so read it before using coordinates for taps      |
 
 **Act**
 
