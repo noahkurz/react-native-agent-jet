@@ -97,3 +97,21 @@ describe("android shell quoting", () => {
 		await expect(typeText("héllo")).rejects.toThrow(/ASCII/);
 	});
 });
+
+describe("device selection without an app connected", () => {
+	const noApp = { connectionFor: () => null, device: null, preferred: null } as never;
+
+	test("falls back to Android when the iOS toolchain is absent", async () => {
+		// on a machine without xcrun the iOS probe throws; it must not abort the search
+		const { deviceFor } = await import("../host/devices.js");
+		const onlyFakeAdb = bin; // this dir contains adb and nothing else
+		const previous = process.env.PATH;
+		process.env.PATH = onlyFakeAdb;
+		try {
+			const device = await deviceFor(noApp);
+			expect(device.platform).toBe("android");
+		} finally {
+			process.env.PATH = previous;
+		}
+	});
+});
