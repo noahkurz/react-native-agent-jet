@@ -1,0 +1,16 @@
+import { android, hasAdb, setPixelRatio } from "./android.js";
+import type { AppConnection } from "./app.js";
+import type { Device, Platform } from "./device.js";
+import { ios } from "./ios.js";
+
+export async function deviceFor(app: AppConnection, want?: Platform): Promise<Device> {
+	const platform = want ?? app.connectionFor()?.device.platform ?? app.preferred ?? undefined;
+	if (platform === "android") {
+		setPixelRatio(app.connectionFor("android")?.device.pixelRatio ?? app.device?.pixelRatio);
+		return android;
+	}
+	if (platform === "ios") return ios;
+	if (await ios.name()) return ios;
+	if ((await hasAdb()) && (await android.name())) return android;
+	throw new Error("No app connected and no iOS Simulator or Android device found.");
+}

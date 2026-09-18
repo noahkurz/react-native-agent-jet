@@ -1,0 +1,77 @@
+{
+	"name": "react-native-agent-jet",
+	"version": "0.6.0",
+	"description": "Lets coding agents see and drive your running React Native / Expo app: semantic element tree, presses, typing, navigation, state, logs and network over MCP, with zero production footprint.",
+	"license": "MIT",
+	"type": "module",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/noahkurz/react-native-agent-jet.git"
+	},
+	"homepage": "https://github.com/noahkurz/react-native-agent-jet#readme",
+	"bugs": {
+		"url": "https://github.com/noahkurz/react-native-agent-jet/issues"
+	},
+	"author": "Noah Kurz",
+	"publishConfig": {
+		"access": "public"
+	},
+	"main": "src/index.ts",
+	"types": "src/index.ts",
+	"react-native": "src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./protocol": "./src/protocol.ts",
+		"./package.json": "./package.json"
+	},
+	"bin": {
+		"react-native-agent-jet": "dist/host/cli.js",
+		"react-native-agent-jet-mcp": "dist/host/mcp.js"
+	},
+	"files": [
+		"src",
+		"dist",
+		"README.md"
+	],
+	"sideEffects": false,
+	"keywords": [
+		"react-native",
+		"expo",
+		"mcp",
+		"agent",
+		"claude-code",
+		"cursor",
+		"ios-simulator",
+		"testing",
+		"automation"
+	],
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"build": "rm -rf dist && tsc -p tsconfig.host.json",
+		"typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.host.json",
+		"format": "prettier --write .",
+		"format:check": "prettier --check .",
+		"prepublishOnly": "bun run typecheck && bun run build",
+		"pack": "bun run typecheck && bun run build && npm pack --pack-destination \"${VENDOR_DIR:-.}\""
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.30.0",
+		"ws": "^8.18.0",
+		"zod": "^3.25.0"
+	},
+	"peerDependencies": {
+		"react": ">=18",
+		"react-native": ">=0.73"
+	},
+	"devDependencies": {
+		"@types/node": "^24.0.0",
+		"@types/react": "^19.1.0",
+		"@types/ws": "^8.18.0",
+		"prettier": "^3.9.7",
+		"react": "19.2.3",
+		"react-native": "0.85.3",
+		"typescript": "^5.9.2"
+	}
+}
