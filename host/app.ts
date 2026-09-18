@@ -8,7 +8,14 @@ import {
 	type Response,
 } from "../src/protocol.js";
 import type { Platform } from "./device.js";
-import { CONNECT_WAIT_MS, ENV, LOOPBACK_HOST, LOOPBACK_HOSTS, REQUEST_TIMEOUT_MS } from "./constants.js";
+import {
+	CLOSE_TIMEOUT_MS,
+	CONNECT_WAIT_MS,
+	ENV,
+	LOOPBACK_HOST,
+	LOOPBACK_HOSTS,
+	REQUEST_TIMEOUT_MS,
+} from "./constants.js";
 
 type Pending = {
 	socket: WebSocket;
@@ -26,9 +33,12 @@ export class AppConnection {
 	private waiters: Array<() => void> = [];
 	preferred: Platform | null = (process.env[ENV.platform] as Platform | undefined) ?? null;
 
+	private readonly server: WebSocketServer;
+
 	constructor(readonly port: number) {
 		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
 		const server = new WebSocketServer({ port, host });
+		this.server = server;
 		if (!LOOPBACK_HOSTS.has(host)) {
 			process.stderr.write(
 				`[agent-jet-mcp] WARNING: listening on ${host}, which is reachable from your network. ` +
@@ -47,6 +57,21 @@ export class AppConnection {
 	 * connected this returns nothing, so callers wait for (or report) that platform instead of
 	 * silently driving the other one.
 	 */
+	/** Stop listening and drop every app connection. Mainly so tests do not leak servers. */
+	close(): Promise<void> {
+		this.connections.splice(0);
+		// terminate rather than close: ws waits for a graceful handshake that a dead client never sends
+		for (const client of this.server.clients) client.terminate();
+		return new Promise((resolve) => {
+			// the port stops accepting as soon as close() is called, so do not block on its callback
+			const timer = setTimeout(resolve, CLOSE_TIMEOUT_MS);
+			this.server.close(() => {
+				clearTimeout(timer);
+				resolve();
+			});
+		});
+	}
+
 	get active(): Connection | null {
 		if (this.preferred) return this.connectionFor(this.preferred);
 		return this.connections[this.connections.length - 1] ?? null;

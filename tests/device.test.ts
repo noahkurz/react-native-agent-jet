@@ -71,16 +71,19 @@ describe("android device control", () => {
 describe("android shell quoting", () => {
 	test("a url containing shell metacharacters is quoted, not interpreted", async () => {
 		const { openUrl } = await import("../host/android.js");
-		await openUrl("myapp://x?a=1;rm -rf /");
-		const call = lastCall();
-		expect(call).toContain("'myapp://x?a=1;rm -rf /'");
-		expect(call).not.toMatch(/-d myapp:\/\/x\?a=1;rm/);
+		const marker = join(bin, "url-marker");
+		await openUrl(`myapp://x?a=1; touch ${marker}`);
+		expect(lastCall()).toContain(`'myapp://x?a=1; touch ${marker}'`);
+		expect(existsSync(marker)).toBe(false);
 	});
 
 	test("an embedded single quote cannot break out of the quoting", async () => {
 		const { terminateApp } = await import("../host/android.js");
-		await terminateApp("com.evil'; rm -rf /; echo '");
-		expect(lastCall()).toContain(`'com.evil'\\''; rm -rf /; echo '\\'''`);
+		const marker = join(bin, "quote-marker");
+		await terminateApp(`com.evil'; touch ${marker}; echo '`);
+		// the inner quote closes, escapes and reopens, so the payload stays a single argument
+		expect(lastCall()).toContain(`'com.evil'\\''; touch ${marker}; echo '\\'''`);
+		expect(existsSync(marker)).toBe(false);
 	});
 
 	test("typed text is quoted and spaces are escaped for `input text`", async () => {

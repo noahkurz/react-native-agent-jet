@@ -92,7 +92,8 @@ describe("global-scoped clients", () => {
 				expect((await writeClientConfig("codex", cwd, pkgDir)).status).toBe("present");
 			}
 		} finally {
-			process.env.HOME = realHome;
+			if (realHome === undefined) delete process.env.HOME;
+			else process.env.HOME = realHome;
 			rmSync(home, { recursive: true, force: true });
 			cleanup();
 		}

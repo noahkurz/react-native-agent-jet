@@ -10,7 +10,13 @@ const node = (over: Partial<UINode> & { id: number }): UINode => ({
 
 describe("describeLine", () => {
 	test("omits coordinates unless frames are asked for", () => {
-		const button = node({ id: 1, type: "Pressable", text: "Save", pressable: true, frame: { x: 1, y: 2, width: 3, height: 4 } });
+		const button = node({
+			id: 1,
+			type: "Pressable",
+			text: "Save",
+			pressable: true,
+			frame: { x: 1, y: 2, width: 3, height: 4 },
+		});
 		expect(describeLine(button, false)).toBe('#1 Pressable "Save" [press]');
 		expect(describeLine(button, true)).toContain("@(1,2 3x4)");
 	});

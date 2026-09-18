@@ -20,6 +20,7 @@ export const PLAYBOOK_FILE = "CLAUDE.md";
 export const REQUEST_TIMEOUT_MS = 15_000;
 export const CONNECT_WAIT_MS = 6_000;
 export const STATUS_WAIT_MS = 3_000;
+export const CLOSE_TIMEOUT_MS = 500;
 export const POLL_INTERVAL_MS = 250;
 export const FOCUS_SETTLE_MS = 400;
 export const DEFAULT_WAIT_MS = 5_000;
