@@ -15,7 +15,8 @@ beforeAll(() => {
 	writeFileSync(
 		join(bin, "adb"),
 		`#!/bin/sh
-printf '%s\\n' "$*" >> ${log}
+: > ${log}
+for arg in "$@"; do printf '%s\\n' "$arg" >> ${log}; done
 case "$*" in
   *devices*) printf 'List of devices attached\\nemulator-5554\\tdevice\\n' ;;
   *"wm density"*) printf 'Physical density: 420\\n' ;;
@@ -33,28 +34,29 @@ afterAll(() => {
 	rmSync(bin, { recursive: true, force: true });
 });
 
-const lastCall = () => {
-	const lines = readFileSync(log, "utf8").trim().split("\n");
-	return lines[lines.length - 1] ?? "";
-};
+/** The argv the fake adb was last invoked with, one element per entry. */
+const lastArgs = (): string[] => readFileSync(log, "utf8").trim().split("\n");
+
+/** The single command string handed to the device shell (`adb -s <id> shell <command>`). */
+const lastShellCommand = (): string => lastArgs().at(-1) ?? "";
 
 describe("android device control", () => {
 	test("taps are converted from points to device pixels", async () => {
 		const { tap } = await import("../host/android.js");
 		await tap({ x: 100, y: 200 }); // density 420 => scale 2.625
-		expect(lastCall()).toBe("-s emulator-5554 shell input tap 263 525");
+		expect(lastArgs()).toEqual(["-s", "emulator-5554", "shell", "input tap 263 525"]);
 	});
 
 	test("swipe passes both points and a duration in milliseconds", async () => {
 		const { swipe } = await import("../host/android.js");
 		await swipe({ x: 10, y: 20 }, { x: 30, y: 40 }, 0.3);
-		expect(lastCall()).toMatch(/shell input swipe 26 53 79 105 300$/);
+		expect(lastShellCommand()).toBe("input swipe 26 53 79 105 300");
 	});
 
 	test("key names map to Android keycodes", async () => {
 		const { pressKey } = await import("../host/android.js");
 		await pressKey("return");
-		expect(lastCall()).toMatch(/input keyevent 66$/);
+		expect(lastShellCommand()).toBe("input keyevent 66");
 	});
 
 	test("an unknown key is rejected rather than sent to the device", async () => {
@@ -73,7 +75,8 @@ describe("android shell quoting", () => {
 		const { openUrl } = await import("../host/android.js");
 		const marker = join(bin, "url-marker");
 		await openUrl(`myapp://x?a=1; touch ${marker}`);
-		expect(lastCall()).toContain(`'myapp://x?a=1; touch ${marker}'`);
+		// the whole payload must arrive as ONE quoted argument to the device shell
+		expect(lastShellCommand()).toBe(`am start -a android.intent.action.VIEW -d 'myapp://x?a=1; touch ${marker}'`);
 		expect(existsSync(marker)).toBe(false);
 	});
 
@@ -82,14 +85,14 @@ describe("android shell quoting", () => {
 		const marker = join(bin, "quote-marker");
 		await terminateApp(`com.evil'; touch ${marker}; echo '`);
 		// the inner quote closes, escapes and reopens, so the payload stays a single argument
-		expect(lastCall()).toContain(`'com.evil'\\''; touch ${marker}; echo '\\'''`);
+		expect(lastShellCommand()).toBe(`am force-stop 'com.evil'\\''; touch ${marker}; echo '\\'''`);
 		expect(existsSync(marker)).toBe(false);
 	});
 
 	test("typed text is quoted and spaces are escaped for `input text`", async () => {
 		const { typeText } = await import("../host/android.js");
 		await typeText("hello world");
-		expect(lastCall()).toBe("-s emulator-5554 shell input text 'hello%sworld'");
+		expect(lastShellCommand()).toBe("input text 'hello%sworld'");
 	});
 
 	test("non-ascii text is rejected instead of being mangled by adb", async () => {

@@ -32,7 +32,7 @@ async function hasSips(): Promise<boolean> {
  * Elsewhere (Windows/Linux) the native image is kept — callers report the real width.
  * Returns the resulting pixel width.
  */
-export async function downscaleIfPossible(path: string, nativeWidth: number, targetWidth: number): Promise<number> {
+async function downscaleIfPossible(path: string, nativeWidth: number, targetWidth: number): Promise<number> {
 	targetWidth = Math.round(targetWidth);
 	if (targetWidth >= nativeWidth) return nativeWidth;
 	if (!(await hasSips())) return nativeWidth;

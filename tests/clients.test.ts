@@ -99,6 +99,27 @@ describe("global-scoped clients", () => {
 		}
 	});
 
+	test("a commented-out table does not count as already registered", async () => {
+		const { cwd, pkgDir, cleanup } = project();
+		const home = mkdtempSync(join(tmpdir(), "jet-home-"));
+		const realHome = process.env.HOME;
+		process.env.HOME = home;
+		try {
+			const path = CLIENTS.codex.file(cwd);
+			if (path.startsWith(home)) {
+				mkdirSync(join(home, ".codex"), { recursive: true });
+				writeFileSync(path, '# [mcp_servers.jet]\n# command = "node"\n');
+				expect((await writeClientConfig("codex", cwd, pkgDir)).status).toBe("written");
+				expect(read(path)).toContain("\n[mcp_servers.jet]");
+			}
+		} finally {
+			if (realHome === undefined) delete process.env.HOME;
+			else process.env.HOME = realHome;
+			rmSync(home, { recursive: true, force: true });
+			cleanup();
+		}
+	});
+
 	test("global clients are reported as global", () => {
 		expect(CLIENTS.codex.scope).toBe("global");
 		expect(CLIENTS.windsurf.scope).toBe("global");

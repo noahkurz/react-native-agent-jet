@@ -6,7 +6,7 @@ import { HELLO, type Hello, type Request, type Response } from "./protocol";
 import { version } from "../package.json";
 
 export { DEFAULT_PORT };
-export const VERSION = version;
+const VERSION = version;
 
 const RECONNECT_MS = 250;
 
@@ -82,8 +82,3 @@ export function connect(url: string) {
 	};
 }
 
-export function disconnect() {
-	shared.stopped = true;
-	shared.socket?.close();
-	shared.socket = null;
-}

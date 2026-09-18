@@ -26,7 +26,7 @@ export async function hasAdb(): Promise<boolean> {
 	return adbChecked;
 }
 
-export async function serial(): Promise<string> {
+async function serial(): Promise<string> {
 	if (process.env.ANDROID_SERIAL) return process.env.ANDROID_SERIAL;
 	if (!(await hasAdb()))
 		throw new Error("adb is not on PATH. Install Android platform-tools or add $ANDROID_HOME/platform-tools to PATH.");

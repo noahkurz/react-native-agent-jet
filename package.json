@@ -50,7 +50,7 @@
 	},
 	"scripts": {
 		"build": "rm -rf dist && tsc -p tsconfig.host.json",
-		"test": "bun test",
+		"test": "bun test --isolate",
 		"typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.host.json",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
