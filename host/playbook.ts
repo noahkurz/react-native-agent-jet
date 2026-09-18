@@ -1,3 +1,5 @@
+import { PACKAGE_NAME } from "./constants.js";
+
 export const PLAYBOOK_MARKER = "<!-- react-native-agent-jet -->";
 
 const STEPS = `- Call \`tree\` once to see everything on screen: text, labels, testIDs, inputs and pressables. Use it instead of guessing from screenshots.
@@ -40,7 +42,7 @@ A string matches a testID exactly, or text/label/placeholder/value by case-insen
 
 export type PackageManager = "bun" | "pnpm" | "yarn" | "npm";
 
-export function addCommand(pm: PackageManager, pkg = "react-native-agent-jet"): string {
+export function addCommand(pm: PackageManager, pkg: string = PACKAGE_NAME): string {
 	return pm === "npm" ? `npm install ${pkg}` : `${pm} add ${pkg}`;
 }
 
@@ -50,7 +52,7 @@ export const SETUP_PROMPT = `Set up react-native-agent-jet in this project so I 
    e.g. \`bun add react-native-agent-jet\`
 2. Run \`npx react-native-agent-jet init --client <this agent>\` (claude, cursor, vscode, codex, windsurf, gemini, or zed). This registers the MCP server and writes the skill.
 3. Add the hook to the app's root component (the top-level file where navigation is set up — e.g. app/_layout.tsx for Expo Router, or App.tsx):
-   - import { useAgentJet } from "react-native-agent-jet";
+   - import { useAgentJet } from "${PACKAGE_NAME}";
    - call it once: useAgentJet({ navigationRef, queryClient, appName: "<app name>" });
    - Wire whatever the app already has: for React Navigation pass the container ref; for Expo Router pass { router, navigationRef } (from expo-router's useNavigationContainerRef()); pass queryClient if the app uses TanStack Query. All are optional.
    - Keep it dev-safe: the hook already compiles out of production, so no __DEV__ guard is needed.

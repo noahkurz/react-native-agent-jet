@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { SERVER_KEY } from "./constants.js";
 
 export type ClientId = "claude" | "cursor" | "vscode" | "codex" | "windsurf" | "gemini" | "zed";
 
@@ -99,14 +100,19 @@ function serverPathFor(spec: ClientSpec, cwd: string, packageDir: string): strin
 	return relative(cwd, absolute).split("\\").join("/");
 }
 
+/** Matches the `[mcp_servers.jet]` table this tool owns, so re-running init is a no-op. */
+export function tomlTablePattern(): RegExp {
+	return new RegExp(`\\[mcp_servers\\.${SERVER_KEY}\\]`);
+}
+
 function tomlString(value: string): string {
 	return JSON.stringify(value);
 }
 
 async function writeToml(path: string, serverPath: string): Promise<"written" | "present"> {
 	const existing = existsSync(path) ? await readFile(path, "utf8") : "";
-	if (/\[mcp_servers\.jet\]/.test(existing)) return "present";
-	const block = `\n[mcp_servers.jet]\ncommand = "node"\nargs = [${tomlString(serverPath)}]\n`;
+	if (tomlTablePattern().test(existing)) return "present";
+	const block = `\n[mcp_servers.${SERVER_KEY}]\ncommand = "node"\nargs = [${tomlString(serverPath)}]\n`;
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, existing ? `${existing.trimEnd()}\n${block}` : block.trimStart());
 	return "written";
@@ -122,8 +128,8 @@ async function writeJson(spec: ClientSpec, path: string, serverPath: string): Pr
 		}
 	}
 	const map = (config[spec.key!] ?? {}) as Record<string, unknown>;
-	const already = "jet" in map;
-	map.jet = spec.entry!(serverPath);
+	const already = SERVER_KEY in map;
+	map[SERVER_KEY] = spec.entry!(serverPath);
 	config[spec.key!] = map;
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, `${JSON.stringify(config, null, "\t")}\n`);

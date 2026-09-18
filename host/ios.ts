@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { Button, Device, Point } from "./device.js";
-import { downscaleIfPossible, pngWidth } from "./image.js";
+import { sizeScreenshot } from "./image.js";
+import { PACKAGE_NAME } from "./constants.js";
 
 const exec = promisify(execFile);
 
@@ -57,7 +58,7 @@ async function axe(args: string[]): Promise<string> {
 }
 
 export async function screenshotDir(): Promise<string> {
-	const dir = join(tmpdir(), "react-native-agent-jet");
+	const dir = join(tmpdir(), PACKAGE_NAME);
 	await mkdir(dir, { recursive: true });
 	return dir;
 }
@@ -65,10 +66,7 @@ export async function screenshotDir(): Promise<string> {
 export async function screenshot(targetWidth: number | null): Promise<{ path: string; width: number }> {
 	const path = join(await screenshotDir(), `screen-${Date.now()}.png`);
 	await run("xcrun", ["simctl", "io", await bootedUdid(), "screenshot", path]);
-	const native = await pngWidth(path);
-	const target = targetWidth ?? Math.round(native / (native >= 1000 ? 3 : 2));
-	const width = await downscaleIfPossible(path, native, target);
-	return { path, width };
+	return sizeScreenshot(path, targetWidth);
 }
 
 export async function tap(point: Point): Promise<void> {

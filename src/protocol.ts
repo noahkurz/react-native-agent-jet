@@ -103,4 +103,7 @@ export type Request<M extends MethodName = MethodName> = {
 
 export type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 
-export type Hello = { type: "hello"; device: DeviceInfo; version: string };
+/** Discriminant for the frame an app sends on connect. */
+export const HELLO = "hello";
+
+export type Hello = { type: typeof HELLO; device: DeviceInfo; version: string };

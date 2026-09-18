@@ -1,10 +1,14 @@
 import { WebSocketServer, type WebSocket } from "ws";
-import type { BridgeMethods, DeviceInfo, Hello, MethodName, Response } from "../src/protocol.js";
+import {
+	HELLO,
+	type BridgeMethods,
+	type DeviceInfo,
+	type Hello,
+	type MethodName,
+	type Response,
+} from "../src/protocol.js";
 import type { Platform } from "./device.js";
-
-const REQUEST_TIMEOUT_MS = 15000;
-const CONNECT_WAIT_MS = 6000;
-const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
+import { CONNECT_WAIT_MS, ENV, LOOPBACK_HOST, LOOPBACK_HOSTS, REQUEST_TIMEOUT_MS } from "./constants.js";
 
 type Pending = {
 	socket: WebSocket;
@@ -20,12 +24,12 @@ export class AppConnection {
 	private pending = new Map<number, Pending>();
 	private nextId = 1;
 	private waiters: Array<() => void> = [];
-	preferred: Platform | null = (process.env.AGENT_JET_PLATFORM as Platform | undefined) ?? null;
+	preferred: Platform | null = (process.env[ENV.platform] as Platform | undefined) ?? null;
 
 	constructor(readonly port: number) {
-		const host = process.env.AGENT_JET_HOST ?? "127.0.0.1";
+		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
 		const server = new WebSocketServer({ port, host });
-		if (!LOOPBACK.has(host)) {
+		if (!LOOPBACK_HOSTS.has(host)) {
 			process.stderr.write(
 				`[agent-jet-mcp] WARNING: listening on ${host}, which is reachable from your network. ` +
 					`There is no authentication, so anyone who can reach port ${port} can impersonate your app. ` +
@@ -89,7 +93,7 @@ export class AppConnection {
 			return;
 		}
 		if ("type" in message) {
-			if (message.type === "hello") {
+			if (message.type === HELLO) {
 				this.connections = this.connections.filter(
 					(connection) => connection.socket !== socket && connection.device.platform !== message.device.platform,
 				);

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Button, Device, Point } from "./device.js";
 import { screenshotDir } from "./ios.js";
-import { downscaleIfPossible, pngWidth } from "./image.js";
+import { sizeScreenshot } from "./image.js";
 
 const exec = promisify(execFile);
 
@@ -85,10 +85,7 @@ export async function screenshot(targetWidth: number | null): Promise<{ path: st
 		maxBuffer: 64 * 1024 * 1024,
 	});
 	await writeFile(path, stdout);
-	const native = await pngWidth(path);
-	const target = targetWidth ?? Math.round(native / (await pixelRatio()));
-	const width = await downscaleIfPossible(path, native, target);
-	return { path, width };
+	return sizeScreenshot(path, targetWidth, await pixelRatio());
 }
 
 export async function tap(point: Point): Promise<void> {

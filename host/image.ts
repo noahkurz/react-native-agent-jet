@@ -39,3 +39,18 @@ export async function downscaleIfPossible(path: string, nativeWidth: number, tar
 	await exec("sips", ["--resampleWidth", String(targetWidth), path]);
 	return targetWidth;
 }
+
+/**
+ * Resolve a captured PNG to its final width. `targetWidth` is what the caller wants (usually the
+ * app's width in points). When it is unknown, the image is left at native resolution rather than
+ * downscaled by a guessed scale factor.
+ */
+export async function sizeScreenshot(
+	path: string,
+	targetWidth: number | null,
+	deviceScale?: number,
+): Promise<{ path: string; width: number }> {
+	const native = await pngWidth(path);
+	const target = targetWidth ?? (deviceScale ? Math.round(native / deviceScale) : native);
+	return { path, width: await downscaleIfPossible(path, native, target) };
+}

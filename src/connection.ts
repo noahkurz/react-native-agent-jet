@@ -1,16 +1,17 @@
 import { Platform } from "react-native";
+import { ANDROID_EMULATOR_HOST, DEFAULT_PORT, LOCALHOST } from "./constants";
 import { originalConsole } from "./capture";
 import { deviceInfo, dispatch } from "./dispatch";
-import type { Hello, Request, Response } from "./protocol";
+import { HELLO, type Hello, type Request, type Response } from "./protocol";
 import { version } from "../package.json";
 
-export const DEFAULT_PORT = 8765;
+export { DEFAULT_PORT };
 export const VERSION = version;
 
 const RECONNECT_MS = 250;
 
 export function defaultUrl(): string {
-	const host = Platform.OS === "android" ? "10.0.2.2" : "localhost";
+	const host = Platform.OS === "android" ? ANDROID_EMULATOR_HOST : LOCALHOST;
 	return `ws://${host}:${DEFAULT_PORT}`;
 }
 
@@ -67,7 +68,7 @@ export function connect(url: string) {
 	}
 	shared.socket = ws;
 	ws.onopen = () => {
-		const hello: Hello = { type: "hello", device: deviceInfo(), version: VERSION };
+		const hello: Hello = { type: HELLO, device: deviceInfo(), version: VERSION };
 		ws.send(JSON.stringify(hello));
 		log(`connected to ${url}`);
 	};

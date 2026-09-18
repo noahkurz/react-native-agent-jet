@@ -5,12 +5,12 @@ import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { WebSocketServer } from "ws";
 import type { Hello } from "../src/protocol.js";
+import { DEFAULT_PORT } from "../src/constants.js";
+import { ENV, PACKAGE_NAME, PLAYBOOK_FILE, SERVER_KEY, SKILL_PATH } from "./constants.js";
 import { addCommand, PLAYBOOK, PLAYBOOK_MARKER, SETUP_PROMPT, SKILL, type PackageManager } from "./playbook.js";
 import { android, hasAdb } from "./android.js";
-import { CLIENTS, clientList, resolveClient, writeClientConfig, type ClientId } from "./clients.js";
+import { CLIENTS, clientList, resolveClient, tomlTablePattern, writeClientConfig, type ClientId } from "./clients.js";
 import { bootedName, hasAxe } from "./ios.js";
-
-const DEFAULT_PORT = 8765;
 
 const ok = (message: string) => console.log(`  ✓ ${message}`);
 const warn = (message: string) => console.log(`  ! ${message}`);
@@ -33,11 +33,11 @@ function parseArgs(argv: string[]): { command: string; flags: Map<string, string
 }
 
 function installedPackageDir(cwd: string): string | null {
-	const local = join(cwd, "node_modules", "react-native-agent-jet");
+	const local = join(cwd, "node_modules", PACKAGE_NAME);
 	if (existsSync(join(local, "package.json"))) return local;
 	try {
 		const require = createRequire(join(cwd, "package.json"));
-		return dirname(require.resolve("react-native-agent-jet/package.json"));
+		return dirname(require.resolve(`${PACKAGE_NAME}/package.json`));
 	} catch {
 		return null;
 	}
@@ -65,7 +65,7 @@ function detectPackageManager(cwd: string): PackageManager {
 }
 
 async function writeSkill(cwd: string): Promise<"written" | "present"> {
-	const path = join(cwd, ".claude", "skills", "agent-jet", "SKILL.md");
+	const path = join(cwd, ...SKILL_PATH);
 	if (existsSync(path)) return "present";
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, SKILL);
@@ -73,7 +73,7 @@ async function writeSkill(cwd: string): Promise<"written" | "present"> {
 }
 
 async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "missing"> {
-	const path = join(cwd, "CLAUDE.md");
+	const path = join(cwd, PLAYBOOK_FILE);
 	if (!existsSync(path)) return "missing";
 	const current = await readFile(path, "utf8");
 	if (current.includes(PLAYBOOK_MARKER)) return "present";
@@ -141,24 +141,21 @@ async function init(flags: Map<string, string | true>) {
 	await reportDevices();
 
 	if (flags.get("skill") !== "false") {
+		const skillPath = SKILL_PATH.join("/");
 		const skill = await writeSkill(cwd);
-		ok(
-			skill === "written"
-				? "wrote .claude/skills/agent-jet/SKILL.md"
-				: ".claude/skills/agent-jet/SKILL.md already exists",
-		);
+		ok(skill === "written" ? `wrote ${skillPath}` : `${skillPath} already exists`);
 	}
 	if (flags.get("playbook") === "true") {
 		const playbook = await appendPlaybook(cwd);
-		if (playbook === "appended") ok("added the agent playbook to CLAUDE.md");
-		else if (playbook === "present") ok("CLAUDE.md already has the agent playbook");
-		else warn("no CLAUDE.md found to append the playbook to");
+		if (playbook === "appended") ok(`added the agent playbook to ${PLAYBOOK_FILE}`);
+		else if (playbook === "present") ok(`${PLAYBOOK_FILE} already has the agent playbook`);
+		else warn(`no ${PLAYBOOK_FILE} found to append the playbook to`);
 	}
 
 	console.log(`
 Next, call the hook once in ${rootFileHint(cwd)}:
 
-  import { useAgentJet } from "react-native-agent-jet";
+  import { useAgentJet } from "${PACKAGE_NAME}";
 
   useAgentJet({ navigationRef, queryClient, appName: "${appName}" });
 
@@ -174,7 +171,7 @@ async function registeredClients(cwd: string): Promise<string[]> {
 		if (!existsSync(path)) continue;
 		try {
 			const text = await readFile(path, "utf8");
-			const hit = spec.format === "toml" ? /\[mcp_servers\.jet\]/.test(text) : text.includes('"jet"');
+			const hit = spec.format === "toml" ? tomlTablePattern().test(text) : text.includes(`"${SERVER_KEY}"`);
 			if (hit) found.push(spec.label);
 		} catch {}
 	}
@@ -196,7 +193,7 @@ async function doctor() {
 
 	await reportDevices();
 
-	const port = Number(process.env.AGENT_JET_PORT ?? DEFAULT_PORT);
+	const port = Number(process.env[ENV.port] ?? DEFAULT_PORT);
 	await new Promise<void>((resolve) => {
 		const server = new WebSocketServer({ port });
 		const finish = () => {
