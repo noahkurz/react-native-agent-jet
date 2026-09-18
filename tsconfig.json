@@ -12,7 +12,8 @@
 		"isolatedModules": true,
 		"noUncheckedIndexedAccess": true,
 		"forceConsistentCasingInFileNames": true,
-		"noEmit": true
+		"noEmit": true,
+		"resolveJsonModule": true
 	},
 	"include": ["src"]
 }

@@ -2,9 +2,10 @@ import { Platform } from "react-native";
 import { originalConsole } from "./capture";
 import { deviceInfo, dispatch } from "./dispatch";
 import type { Hello, Request, Response } from "./protocol";
+import { version } from "../package.json";
 
 export const DEFAULT_PORT = 8765;
-export const VERSION = "0.3.0";
+export const VERSION = version;
 
 const RECONNECT_MS = 250;
 
