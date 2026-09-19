@@ -23,3 +23,5 @@ export const FOCUS_SETTLE_MS = 400;
 export const DEFAULT_WAIT_MS = 5_000;
 export const DEFAULT_SWIPE_DISTANCE = 300;
 export const DEFAULT_SWIPE_SECONDS = 0.3;
+
+export const SHUTDOWN_MESSAGE = "The agent-jet server is shutting down.";

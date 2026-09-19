@@ -11,6 +11,7 @@ import type { Platform } from "./device.js";
 import {
 	CLOSE_TIMEOUT_MS,
 	CONNECT_WAIT_MS,
+	SHUTDOWN_MESSAGE,
 	ENV,
 	LOOPBACK_HOST,
 	LOOPBACK_HOSTS,
@@ -26,6 +27,8 @@ type Pending = {
 
 type Connection = { socket: WebSocket; device: DeviceInfo; version: string; connectedAt: number };
 
+type Waiter = { wake: () => void; cancel: (reason: Error) => void };
+
 function safeToIgnore<T>(promise: Promise<T>): Promise<T> {
 	promise.catch(() => {});
 	return promise;
@@ -35,7 +38,8 @@ export class AppConnection {
 	private connections: Connection[] = [];
 	private pending = new Map<number, Pending>();
 	private nextId = 1;
-	private waiters: Array<() => void> = [];
+	private waiters: Waiter[] = [];
+	private closed = false;
 	preferred: Platform | null = (process.env[ENV.platform] as Platform | undefined) ?? null;
 
 	private readonly server: WebSocketServer;
@@ -76,6 +80,9 @@ export class AppConnection {
 	}
 
 	close(): Promise<void> {
+		this.closed = true;
+		for (const waiter of [...this.waiters]) waiter.cancel(new Error(SHUTDOWN_MESSAGE));
+
 		this.connections.splice(0);
 		for (const client of this.server.clients) client.terminate();
 
@@ -150,7 +157,7 @@ export class AppConnection {
 				);
 				this.connections.push({ socket, device: message.device, version: message.version, connectedAt: Date.now() });
 				const stillWaiting = [...this.waiters];
-				for (const wake of stillWaiting) wake();
+				for (const waiter of stillWaiting) waiter.wake();
 			}
 			return;
 		}
@@ -178,12 +185,20 @@ export class AppConnection {
 	}
 
 	private waitForConnection(platform?: Platform, timeoutMs = CONNECT_WAIT_MS): Promise<Connection> {
+		if (this.closed) return Promise.reject(new Error(SHUTDOWN_MESSAGE));
+
 		const wanted = platform ?? this.preferred ?? undefined;
 		const existing = this.connectionFor(wanted);
 		if (existing) return Promise.resolve(existing);
+
 		return new Promise((resolve, reject) => {
+			const stopWaiting = () => {
+				clearTimeout(timer);
+				this.waiters = this.waiters.filter((candidate) => candidate !== waiter);
+			};
+
 			const timer = setTimeout(() => {
-				this.waiters = this.waiters.filter((waiter) => waiter !== wake);
+				stopWaiting();
 				const want = wanted ? `${wanted} app` : "app";
 				reject(
 					new Error(
@@ -191,14 +206,21 @@ export class AppConnection {
 					),
 				);
 			}, timeoutMs);
-			const wake = () => {
-				const match = this.connectionFor(wanted);
-				if (!match) return;
-				clearTimeout(timer);
-				this.waiters = this.waiters.filter((waiter) => waiter !== wake);
-				resolve(match);
+
+			const waiter: Waiter = {
+				wake: () => {
+					const match = this.connectionFor(wanted);
+					if (!match) return;
+					stopWaiting();
+					resolve(match);
+				},
+				cancel: (reason) => {
+					stopWaiting();
+					reject(reason);
+				},
 			};
-			this.waiters.push(wake);
+
+			this.waiters.push(waiter);
 		});
 	}
 

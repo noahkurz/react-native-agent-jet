@@ -91,6 +91,12 @@ function accepts(host: string, port: number, timeoutMs = 1_000): Promise<boolean
 
 const lan = lanAddress();
 
+/** Pending timers this process is holding, so a leaked wait timer is visible. */
+function activeTimerCount(): number {
+	const handles = (process as unknown as { _getActiveHandles?: () => unknown[] })._getActiveHandles?.() ?? [];
+	return handles.filter((handle) => handle?.constructor?.name === "Timeout").length;
+}
+
 describe("binding", () => {
 	test("accepts connections on loopback", async () => {
 		const app = await serve();
@@ -210,5 +216,38 @@ describe("waiting for a particular platform", () => {
 		await fakeApp(app.port, "ios");
 
 		expect(await waitingForIos).toBe(true);
+	});
+});
+
+describe("shutdown", () => {
+	test("a wait in flight fails immediately instead of sitting out its timeout", async () => {
+		const app = await serve();
+
+		const waiting = app.ready(30_000, "ios");
+		const startedAt = Date.now();
+
+		await app.close();
+
+		expect(await waiting).toBe(false);
+		expect(Date.now() - startedAt).toBeLessThan(1_000);
+	});
+
+	test("a wait started after shutdown fails without arming a timer", async () => {
+		const app = await serve();
+		await app.close();
+
+		const startedAt = Date.now();
+		expect(await app.ready(30_000, "ios")).toBe(false);
+		expect(Date.now() - startedAt).toBeLessThan(100);
+	});
+
+	test("close leaves no timer holding the event loop open", async () => {
+		const app = await serve();
+
+		const waiting = app.ready(30_000, "ios");
+		await app.close();
+		await waiting;
+
+		expect(activeTimerCount()).toBe(0);
 	});
 });
