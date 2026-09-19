@@ -81,4 +81,3 @@ export function connect(url: string) {
 		if (!shared.stopped) setTimeout(() => connect(url), RECONNECT_MS);
 	};
 }
-

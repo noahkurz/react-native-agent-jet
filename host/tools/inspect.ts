@@ -1,4 +1,3 @@
-/** Tools that read the app: what is on screen, where it is, and what it did. */
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -51,7 +50,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 		},
 		async ({ width, platform }) => {
 			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
-			const shot = await (await deviceFor(app, platform)).screenshot({ pixelWidth: width, pointWidth });
+			const shot = await (await deviceFor(app, platform)).screenshot({ preferredPixelWidth: width, pointWidth });
 			const data = (await readFile(shot.path)).toString("base64");
 			return {
 				content: [

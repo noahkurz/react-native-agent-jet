@@ -3,13 +3,14 @@ import { mkdtempSync, readFileSync, writeFileSync, chmodSync, existsSync, rmSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/**
- * Put a fake `adb` on PATH that records the argv it was called with, so we can assert the exact
- * command sent to the device — including how untrusted strings are quoted.
- */
 const bin = mkdtempSync(join(tmpdir(), "jet-adb-"));
 const log = join(bin, "calls.txt");
 const originalPath = process.env.PATH ?? "";
+
+const FAKE_DENSITY_DPI = 420;
+const BASELINE_DENSITY_DPI = 160;
+const FAKE_DEVICE_SCALE = FAKE_DENSITY_DPI / BASELINE_DENSITY_DPI;
+const inDevicePixels = (points: number) => Math.round(points * FAKE_DEVICE_SCALE);
 
 beforeAll(() => {
 	writeFileSync(
@@ -19,7 +20,7 @@ beforeAll(() => {
 for arg in "$@"; do printf '%s\\n' "$arg" >> "${log}"; done
 case "$*" in
   *devices*) printf 'List of devices attached\\nemulator-5554\\tdevice\\n' ;;
-  *"wm density"*) printf 'Physical density: 420\\n' ;;
+  *"wm density"*) printf 'Physical density: ${FAKE_DENSITY_DPI}\\n' ;;
   *version*) printf 'Android Debug Bridge version 1.0.41\\n' ;;
 esac
 exit 0
@@ -34,23 +35,28 @@ afterAll(() => {
 	rmSync(bin, { recursive: true, force: true });
 });
 
-/** The argv the fake adb was last invoked with, one element per entry. */
 const lastArgs = (): string[] => readFileSync(log, "utf8").trim().split("\n");
 
-/** The single command string handed to the device shell (`adb -s <id> shell <command>`). */
 const lastShellCommand = (): string => lastArgs().at(-1) ?? "";
 
 describe("android device control", () => {
 	test("taps are converted from points to device pixels", async () => {
 		const { tap } = await import("../host/android.js");
-		await tap({ x: 100, y: 200 }); // density 420 => scale 2.625
-		expect(lastArgs()).toEqual(["-s", "emulator-5554", "shell", "input tap 263 525"]);
+		await tap({ x: 100, y: 200 });
+		expect(lastArgs()).toEqual([
+			"-s",
+			"emulator-5554",
+			"shell",
+			`input tap ${inDevicePixels(100)} ${inDevicePixels(200)}`,
+		]);
 	});
 
 	test("swipe passes both points and a duration in milliseconds", async () => {
 		const { swipe } = await import("../host/android.js");
 		await swipe({ x: 10, y: 20 }, { x: 30, y: 40 }, 0.3);
-		expect(lastShellCommand()).toBe("input swipe 26 53 79 105 300");
+		expect(lastShellCommand()).toBe(
+			`input swipe ${inDevicePixels(10)} ${inDevicePixels(20)} ${inDevicePixels(30)} ${inDevicePixels(40)} 300`,
+		);
 	});
 
 	test("key names map to Android keycodes", async () => {
@@ -75,7 +81,6 @@ describe("android shell quoting", () => {
 		const { openUrl } = await import("../host/android.js");
 		const marker = join(bin, "url-marker");
 		await openUrl(`myapp://x?a=1; touch ${marker}`);
-		// the whole payload must arrive as ONE quoted argument to the device shell
 		expect(lastShellCommand()).toBe(`am start -a android.intent.action.VIEW -d 'myapp://x?a=1; touch ${marker}'`);
 		expect(existsSync(marker)).toBe(false);
 	});
@@ -84,7 +89,6 @@ describe("android shell quoting", () => {
 		const { terminateApp } = await import("../host/android.js");
 		const marker = join(bin, "quote-marker");
 		await terminateApp(`com.evil'; touch ${marker}; echo '`);
-		// the inner quote closes, escapes and reopens, so the payload stays a single argument
 		expect(lastShellCommand()).toBe(`am force-stop 'com.evil'\\''; touch ${marker}; echo '\\'''`);
 		expect(existsSync(marker)).toBe(false);
 	});
@@ -104,7 +108,6 @@ describe("android shell quoting", () => {
 describe("which device a tool drives", () => {
 	const noApp = { connectionFor: () => null, device: null, preferred: null } as never;
 
-	/** An app connected on `connected`, with `preferred` chosen via select_platform. */
 	const appWith = (connected: "ios" | "android", preferred: "ios" | "android" | null = null) =>
 		({
 			preferred,
@@ -132,11 +135,10 @@ describe("which device a tool drives", () => {
 	});
 
 	test("falls back to Android when the iOS toolchain is absent", async () => {
-		// on a machine without xcrun the iOS probe throws; it must not abort the search
 		const { deviceFor } = await import("../host/devices.js");
-		const onlyFakeAdb = bin; // this dir contains adb and nothing else
+		const pathWithoutXcrun = bin;
 		const previous = process.env.PATH;
-		process.env.PATH = onlyFakeAdb;
+		process.env.PATH = pathWithoutXcrun;
 		try {
 			const device = await deviceFor(noApp);
 			expect(device.platform).toBe("android");
@@ -147,8 +149,6 @@ describe("which device a tool drives", () => {
 });
 
 describe("device name never rejects", () => {
-	/** The status tool reports every platform in one response, so one missing toolchain
-	 *  must yield null for that platform rather than failing the whole report. */
 	const withPathOf = async (dir: string, body: () => Promise<void>) => {
 		const previous = process.env.PATH;
 		process.env.PATH = dir;

@@ -11,7 +11,6 @@ const nextPort = () => ++port;
 const opened: WebSocket[] = [];
 const servers: AppConnection[] = [];
 
-/** Track the connection so afterEach can release its port. */
 function serve(port: number): AppConnection {
 	const app = new AppConnection(port);
 	servers.push(app);
@@ -23,7 +22,6 @@ afterEach(async () => {
 	await Promise.all(servers.splice(0).map((app) => app.close()));
 });
 
-/** Connect a fake app that answers every request with `result`. */
 function fakeApp(
 	port: number,
 	platform: "ios" | "android",
@@ -33,7 +31,6 @@ function fakeApp(
 	return new Promise((resolve, reject) => {
 		const socket = new WebSocket(`ws://127.0.0.1:${port}`);
 		opened.push(socket);
-		// without this a failed connection is an unhandled error that kills the test worker
 		socket.on("error", reject);
 		socket.on("open", () => {
 			socket.send(
@@ -61,7 +58,6 @@ function fakeApp(
 	});
 }
 
-/** Wait for the registry to reach an expected state instead of sleeping a fixed amount. */
 async function until(condition: () => boolean, label: string, timeoutMs = 5_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (!condition()) {
@@ -70,7 +66,6 @@ async function until(condition: () => boolean, label: string, timeoutMs = 5_000)
 	}
 }
 
-/** The first routable IPv4 address of this machine, or null when it only has loopback. */
 function lanAddress(): string | null {
 	for (const addresses of Object.values(networkInterfaces())) {
 		for (const address of addresses ?? []) {
@@ -80,7 +75,6 @@ function lanAddress(): string | null {
 	return null;
 }
 
-/** Whether a TCP connection to host:port is accepted within the timeout. */
 function accepts(host: string, port: number, timeoutMs = 1_000): Promise<boolean> {
 	return new Promise((resolve) => {
 		const socket = connect({ host, port });
@@ -167,8 +161,6 @@ describe("platform routing", () => {
 
 describe("select_platform is honoured strictly", () => {
 	test("does not silently fall back to the other platform", async () => {
-		// regression: `active` fell through to the most recent connection, so selecting a
-		// platform that was not connected quietly drove the other device instead.
 		const p = nextPort();
 		const app = serve(p);
 		await fakeApp(p, "ios", "from-ios");

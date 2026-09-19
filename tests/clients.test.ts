@@ -4,7 +4,6 @@ import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
 import { CLIENTS, resolveClient, tomlTablePattern, writeClientConfig } from "../host/clients.js";
 
-/** A throwaway project with the package "installed", so paths resolve like a real one. */
 function project() {
 	const cwd = mkdtempSync(join(tmpdir(), "jet-proj-"));
 	const pkgDir = join(cwd, "node_modules", "react-native-agent-jet");
@@ -82,13 +81,12 @@ describe("global-scoped clients", () => {
 		const realHome = process.env.HOME;
 		process.env.HOME = home;
 		try {
-			// CLIENTS.codex.file() reads homedir() which honours $HOME on posix
 			const path = CLIENTS.codex.file(cwd);
 			if (path.startsWith(home)) {
 				const first = await writeClientConfig("codex", cwd, pkgDir);
 				expect(first.status).toBe("written");
 				expect(read(path)).toContain("[mcp_servers.jet]");
-				expect(read(path)).toContain(pkgDir); // absolute, since the config lives outside the project
+				expect(read(path)).toContain(pkgDir);
 				expect((await writeClientConfig("codex", cwd, pkgDir)).status).toBe("present");
 			}
 		} finally {
@@ -135,8 +133,6 @@ describe("detecting an existing codex table", () => {
 	});
 
 	test("recognises the table when the config was written on windows", () => {
-		// regression: the end-of-line anchor did not allow for the carriage return, so init
-		// appended a duplicate table every run on Windows
 		expect(registered('[mcp_servers.other]\r\n[mcp_servers.jet]\r\ncommand = "node"\r\n')).toBe(true);
 	});
 

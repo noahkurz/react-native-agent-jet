@@ -52,21 +52,13 @@ export class AppConnection {
 		});
 	}
 
-	/**
-	 * The app tools act on. A platform chosen with select_platform is honoured strictly: if it is not
-	 * connected this returns nothing, so callers wait for (or report) that platform instead of
-	 * silently driving the other one.
-	 */
-	/** Stop listening and drop every app connection. Mainly so tests do not leak servers. */
 	close(): Promise<void> {
 		this.connections.splice(0);
-		// terminate rather than close: ws waits for a graceful handshake that a dead client never sends
 		for (const client of this.server.clients) client.terminate();
 		return new Promise((resolve) => {
-			// the port stops accepting as soon as close() is called, so do not block on its callback
-			const timer = setTimeout(resolve, CLOSE_TIMEOUT_MS);
+			const stopWaitingForStragglers = setTimeout(resolve, CLOSE_TIMEOUT_MS);
 			this.server.close(() => {
-				clearTimeout(timer);
+				clearTimeout(stopWaitingForStragglers);
 				resolve();
 			});
 		});

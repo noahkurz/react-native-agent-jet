@@ -65,7 +65,6 @@ describe("urls and form bodies", () => {
 	});
 
 	test("redacts a secret that is the FIRST form parameter", () => {
-		// regression: the pattern once required a leading ? or &, so a leading secret leaked
 		expect(redactBody("password=hunter2&user=noah")).toBe("password=[redacted]&user=noah");
 	});
 
@@ -76,7 +75,6 @@ describe("urls and form bodies", () => {
 
 describe("custom keys", () => {
 	test("camelCase and snake_case custom keys actually match", () => {
-		// regression: needles were not normalised, so custom keys silently matched nothing
 		configureRedaction({ keys: ["memberNumber", "policy_id"] });
 		const out = parse(redactBody(JSON.stringify({ memberNumber: "M-1", policy_id: "P-1", title: "Hi" })));
 		expect(out).toEqual({ memberNumber: "[redacted]", policy_id: "[redacted]", title: "Hi" });

@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import type { Fiber } from "../src/tree/types";
 
-// the walker reads layout/style helpers from react-native; stub them so it runs under node
 mock.module("react-native", () => ({
 	StyleSheet: { flatten: (style: unknown) => style },
 	Dimensions: { get: () => ({ width: 400, height: 800 }) },
@@ -10,7 +9,6 @@ mock.module("react-native", () => ({
 const HOST = 5;
 const HOST_TEXT = 6;
 
-/** Build a fiber, wiring children into the child/sibling shape React uses. */
 function fiber(over: Partial<Fiber> & { type?: unknown }, children: Fiber[] = []): Fiber {
 	const node = {
 		tag: 0,
@@ -36,7 +34,6 @@ const host = (type: string, props: Record<string, unknown> = {}, children: Fiber
 
 const textNode = (value: string) => fiber({ tag: HOST_TEXT, memoizedProps: value as unknown });
 
-/** Present `root`'s children as the app's fiber roots. */
 function mountTree(root: Fiber) {
 	(globalThis as Record<string, unknown>).__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
 		renderers: new Map([[1, {}]]),
@@ -56,7 +53,6 @@ beforeAll(async () => {
 
 describe("what survives the walk", () => {
 	test("keeps text, and collapses a wrapper chain into the pressable that owns it", () => {
-		// Pressable > View > RCTText("Save") is how a button is really rendered
 		mountTree(
 			fiber({}, [host("View", { onPress: () => {} }, [host("View", {}, [host("RCTText", {}, [textNode("Save")])])])]),
 		);
@@ -103,7 +99,6 @@ describe("what survives the walk", () => {
 	});
 
 	test("keeps a child whose role differs from its parent's instead of collapsing it away", () => {
-		// collapsing here would drop the image role entirely, since the parent already has one
 		mountTree(
 			fiber({}, [
 				host("View", { role: "button", onPress: () => {} }, [
@@ -134,14 +129,11 @@ describe("what the walk hides", () => {
 	});
 
 	test("skips an inactive navigator screen", () => {
-		// react-navigation renders react-native-screens, so activityState lands on an RNSScreen host
 		mountTree(fiber({}, [host("RNSScreen", { activityState: 0 }, [host("RCTText", {}, [textNode("behind")])])]));
 		expect(snapshot().roots).toHaveLength(0);
 	});
 
 	test("only react-native-screens may hide a subtree with active={false}", () => {
-		// regression: any component taking an `active` prop (tabs, chips, carousels) had its whole
-		// subtree hidden from the agent
 		mountTree(fiber({}, [host("Chip", { active: false }, [host("RCTText", {}, [textNode("Neat")])])]));
 		expect(snapshot().roots.map((n) => n.text)).toEqual(["Neat"]);
 	});
@@ -169,8 +161,6 @@ describe("what the walk hides", () => {
 
 describe("collapsing wrappers", () => {
 	test("does not merge a pressable child that has its own handler", () => {
-		// regression: merging them meant pressing the node fired the outer handler while the tree
-		// showed the inner one
 		const outer = () => {};
 		const inner = () => {};
 		mountTree(
@@ -216,7 +206,6 @@ describe("node identity", () => {
 		mountTree(fiber({}, [first]));
 		const before = snapshot().roots[0]!.id;
 
-		// React swaps in the alternate on the next render
 		const alternate = host("View", { onPress: () => {} });
 		(alternate as { alternate: Fiber | null }).alternate = first;
 		(first as { alternate: Fiber | null }).alternate = alternate;
@@ -230,7 +219,6 @@ describe("nameOf", () => {
 		expect(nameOf({ type: "RCTView" })).toBe("RCTView");
 		expect(nameOf({ type: function Checkout() {} })).toBe("Checkout");
 		expect(nameOf({ type: { $$typeof: Symbol.for("react.forward_ref"), render: { name: "Button" } } })).toBe("Button");
-		// Tamagui ships forwardRef components whose displayName is unhelpful
 		expect(
 			nameOf({
 				type: {

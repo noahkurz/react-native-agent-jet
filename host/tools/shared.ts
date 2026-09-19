@@ -60,9 +60,7 @@ export async function locate(
 	return picked;
 }
 
-/** Everything a tool group needs: the app connection plus state shared across calls. */
 export type ToolContext = {
 	app: AppConnection;
-	/** Last full tree per platform, so `tree changesSince:true` can diff against it. */
 	lastTree: Map<string, UINode[]>;
 };

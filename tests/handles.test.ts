@@ -9,7 +9,6 @@ type Nav = {
 	getCurrentRoute: () => { name: string } | undefined;
 };
 
-/** A React Navigation container shaped like NEAT's: a stack whose first route holds the tabs. */
 function reactNavigation(overrides: Partial<Nav> = {}) {
 	const calls: Array<{ name: string; params?: unknown }> = [];
 	const nav: Nav = {
@@ -47,7 +46,6 @@ describe("navigateTo with React Navigation", () => {
 		const { nav, calls } = reactNavigation();
 		setOptions({ navigationRef: nav });
 		navigateTo("Search");
-		// Search lives under Tab, so navigating to the bare name must go through Tab
 		expect(calls[0]).toEqual({ name: "Tab", params: { screen: "Search", params: undefined } });
 	});
 

@@ -1,8 +1,5 @@
-/** Names and limits used only on the host side. */
-
 export const PACKAGE_NAME = "react-native-agent-jet";
 
-/** The name this MCP server is registered under in every client's config. */
 export const SERVER_KEY = "jet";
 
 export const ENV = {

@@ -4,14 +4,18 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
-/** Read a PNG's pixel width from its IHDR header — no external tools, works on any OS. */
+const IHDR_MARKER_START = 8 + 4;
+const IHDR_MARKER_END = IHDR_MARKER_START + "IHDR".length;
+const IHDR_WIDTH_OFFSET = IHDR_MARKER_END;
+const IHDR_HEADER_LENGTH = IHDR_WIDTH_OFFSET + 4 + 4;
+
 export async function pngWidth(path: string): Promise<number> {
 	const buffer = await readFile(path);
-	// PNG signature (8 bytes) + IHDR length (4) + "IHDR" (4) → width is the next 4 bytes, big-endian.
-	if (buffer.length < 24 || buffer.toString("ascii", 12, 16) !== "IHDR") {
+	const marker = buffer.toString("ascii", IHDR_MARKER_START, IHDR_MARKER_END);
+	if (buffer.length < IHDR_HEADER_LENGTH || marker !== "IHDR") {
 		throw new Error("Not a PNG or unexpected header");
 	}
-	return buffer.readUInt32BE(16);
+	return buffer.readUInt32BE(IHDR_WIDTH_OFFSET);
 }
 
 let sipsChecked: boolean | null = null;
@@ -27,11 +31,6 @@ async function hasSips(): Promise<boolean> {
 	return sipsChecked;
 }
 
-/**
- * Downscale a PNG to `targetWidth` when a resizer is available (sips, macOS).
- * Elsewhere (Windows/Linux) the native image is kept — callers report the real width.
- * Returns the resulting pixel width.
- */
 async function downscaleIfPossible(path: string, nativeWidth: number, requestedWidth: number): Promise<number> {
 	const targetWidth = Math.round(requestedWidth);
 	if (targetWidth >= nativeWidth) return nativeWidth;
@@ -40,7 +39,6 @@ async function downscaleIfPossible(path: string, nativeWidth: number, requestedW
 		await exec("sips", ["--resampleWidth", String(targetWidth), path]);
 		return targetWidth;
 	} catch {
-		// A screenshot at the wrong size is far more useful than no screenshot at all.
 		return nativeWidth;
 	}
 }
@@ -48,31 +46,21 @@ async function downscaleIfPossible(path: string, nativeWidth: number, requestedW
 export type Screenshot = {
 	path: string;
 	width: number;
-	/** True when one image pixel equals one point, so coordinates can be used for taps directly. */
 	inPoints: boolean;
 };
 
 export type SizeRequest = {
-	/** Preferred output width in pixels. The image is never upscaled and stays native when no
-	 *  resizer is available, so the result may be wider or narrower. Says nothing about points. */
-	pixelWidth?: number | null;
-	/** The screen's width in points, if known. Only this can make the result tap-safe. */
+	preferredPixelWidth?: number | null;
 	pointWidth?: number | null;
-	/** Device pixel ratio, used to derive the point width when it was not supplied. */
 	deviceScale?: number;
 };
 
-/**
- * Resolve a captured PNG to its final width and say whether that width is in points.
- * A pixel override and a point width are different things: only the latter makes the image's
- * coordinates usable for taps, so they are kept apart rather than collapsed into one number.
- */
 export async function sizeScreenshot(path: string, request: SizeRequest = {}): Promise<Screenshot> {
 	const native = await pngWidth(path);
 	const fromScale = request.deviceScale ? native / request.deviceScale : null;
 	const pointWidth = request.pointWidth ?? fromScale;
 	const pointWidthInPixels = pointWidth === null ? null : Math.round(pointWidth);
-	const requested = request.pixelWidth ?? pointWidthInPixels;
+	const requested = request.preferredPixelWidth ?? pointWidthInPixels;
 	if (requested === null) return { path, width: native, inPoints: false };
 	const width = await downscaleIfPossible(path, native, requested);
 	return { path, width, inPoints: pointWidthInPixels !== null && width === pointWidthInPixels };

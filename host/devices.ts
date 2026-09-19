@@ -10,8 +10,7 @@ export async function deviceFor(app: AppConnection, want?: Platform): Promise<De
 		return android;
 	}
 	if (platform === "ios") return ios;
-	// Probing must not throw: a machine without Xcode should still fall through to Android.
-	if (await ios.name().catch(() => null)) return ios;
-	if ((await hasAdb()) && (await android.name().catch(() => null))) return android;
+	if (await ios.name()) return ios;
+	if ((await hasAdb()) && (await android.name())) return android;
 	throw new Error("No app connected and no iOS Simulator or Android device found.");
 }

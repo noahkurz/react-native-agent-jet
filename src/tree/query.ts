@@ -1,4 +1,3 @@
-/** Finding nodes by target, and producing the pruned tree the agent sees. */
 import type { Selector, Target, TreeParams, UINode } from "../protocol";
 import { measureAll } from "./measure";
 import { snapshot } from "./walk";

@@ -27,7 +27,6 @@ export type ScrollInstance = {
 
 export type Snapshot = { roots: UINode[]; all: SemanticNode[] };
 
-/** A host instance we can ask for its on-screen box. */
 export type Measurable = {
 	measureInWindow(callback: (x: number, y: number, width: number, height: number) => void): void;
 	focus?: () => void;

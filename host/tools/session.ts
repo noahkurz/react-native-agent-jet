@@ -1,4 +1,3 @@
-/** Tools that manage the session and the device itself. */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { android } from "../android.js";

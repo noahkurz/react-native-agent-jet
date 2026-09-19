@@ -1,4 +1,3 @@
-/** Turning React's Fiber tree into the semantic node tree an agent reads. */
 import { StyleSheet } from "react-native";
 import type { UINode } from "../protocol";
 import {
@@ -22,7 +21,6 @@ type DevtoolsHook = {
 	getFiberRoots(rendererId: number): Set<{ current: Fiber }>;
 };
 
-/** Ids must survive re-renders, so they are keyed by fiber and shared with its alternate. */
 const fiberIds = new WeakMap<Fiber, number>();
 let nextFiberId = 1;
 
@@ -92,11 +90,6 @@ function propsOf(fiber: Fiber): Props | null {
 	return props && typeof props === "object" ? (props as Props) : null;
 }
 
-/**
- * `active` is an ordinary prop name (tabs, chips, carousels all use it), so only react-native-screens
- * is allowed to mean "this subtree is off screen" by it. Otherwise a chip with active={false} would
- * hide everything inside it from the agent.
- */
 function isInactiveScreen(name: string, props: Props): boolean {
 	if (!name.startsWith(RN_SCREEN_PREFIX)) return false;
 	return props.activityState === 0 || props.active === 0 || props.active === false;
@@ -212,6 +205,28 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 	if (created) finalize(created, all);
 }
 
+function addsNoIdentityOfItsOwn(child: UINode, parent: UINode): boolean {
+	return (
+		(!child.testID || child.testID === parent.testID) &&
+		(!child.label || child.label === parent.label) &&
+		(!child.role || child.role === parent.role)
+	);
+}
+
+function isBareLeaf(child: UINode): boolean {
+	return child.children.length === 0 && !child.pressable && !child.input && !child.scrollable;
+}
+
+function isTheSameControl(child: SemanticNode, parent: SemanticNode): boolean {
+	return (
+		parent.node.pressable === true &&
+		child.node.pressable === true &&
+		child.onPress === parent.onPress &&
+		!child.node.input &&
+		!child.node.scrollable
+	);
+}
+
 function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 	const text = semantic.textParts.join("").trim();
 	if (text) semantic.node.text = text;
@@ -220,25 +235,9 @@ function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 	const onlySemantic = all.find((candidate) => candidate.node === only);
 	if (!onlySemantic) return;
 	const absorbsText =
-		only.children.length === 0 &&
-		!only.pressable &&
-		!only.input &&
-		!only.scrollable &&
-		(!only.testID || only.testID === semantic.node.testID) &&
-		(!only.label || only.label === semantic.node.label) &&
-		(!only.role || only.role === semantic.node.role) &&
-		(!only.text || !semantic.node.text);
-	// Only collapse when the child is the same control: same handler, and nothing extra to lose.
+		isBareLeaf(only) && addsNoIdentityOfItsOwn(only, semantic.node) && (!only.text || !semantic.node.text);
 	const absorbsWrapper =
-		semantic.node.pressable === true &&
-		only.pressable === true &&
-		onlySemantic.onPress === semantic.onPress &&
-		!only.input &&
-		!only.scrollable &&
-		!semantic.node.text &&
-		(!only.testID || only.testID === semantic.node.testID) &&
-		(!only.label || only.label === semantic.node.label) &&
-		(!only.role || only.role === semantic.node.role);
+		isTheSameControl(onlySemantic, semantic) && !semantic.node.text && addsNoIdentityOfItsOwn(only, semantic.node);
 	if (!absorbsText && !absorbsWrapper) return;
 	if (only.text) semantic.node.text = only.text;
 	if (only.testID && !semantic.node.testID) semantic.node.testID = only.testID;

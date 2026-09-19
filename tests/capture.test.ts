@@ -8,26 +8,22 @@ const ok = async () =>
 		headers: { "content-type": "application/json" },
 	});
 
-let handler: (...args: Parameters<typeof fetch>) => Promise<Response> = ok;
+let respondToFetch: (...args: Parameters<typeof fetch>) => Promise<Response> = ok;
 
-/** installCapture patches globals once per process, so set the globals up first. */
 beforeAll(() => {
-	// the XHR patch needs the constructor to exist; nothing in these tests uses it
 	(globalThis as Record<string, unknown>).XMLHttpRequest ??= class {
 		open() {}
 		send() {}
 		addEventListener() {}
 	};
-	// capture wraps whatever fetch exists at install time, so install a stub that delegates to a
-	// handler the tests can swap. Replacing globalThis.fetch later would bypass the wrapper.
-	globalThis.fetch = ((...args: Parameters<typeof fetch>) => handler(...args)) as typeof fetch;
+	globalThis.fetch = ((...args: Parameters<typeof fetch>) => respondToFetch(...args)) as typeof fetch;
 	installCapture();
 });
 
 beforeEach(() => {
 	clearCapture();
 	configureRedaction(true);
-	handler = ok;
+	respondToFetch = ok;
 });
 
 describe("console capture", () => {
@@ -92,13 +88,13 @@ describe("fetch capture", () => {
 	});
 
 	test("records a failed request with its reason rather than dropping it", async () => {
-		handler = async () => {
+		respondToFetch = async () => {
 			throw new Error("Unable to resolve host");
 		};
 		try {
 			await expect(fetch("https://nope.example.com")).rejects.toThrow();
 		} finally {
-			handler = ok;
+			respondToFetch = ok;
 		}
 		const entry = readNetwork().at(-1)!;
 		expect(entry.status).toBeUndefined();

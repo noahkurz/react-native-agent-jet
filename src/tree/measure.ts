@@ -1,4 +1,3 @@
-/** Resolving a fiber to a host instance and asking it where it is on screen. */
 import { Dimensions } from "react-native";
 import type { Frame } from "../protocol";
 import { HOST_COMPONENT } from "./names";

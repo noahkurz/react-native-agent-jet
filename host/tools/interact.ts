@@ -1,4 +1,3 @@
-/** Tools that drive the app: pressing, typing, scrolling and navigating. */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { UINode } from "../../src/protocol.js";

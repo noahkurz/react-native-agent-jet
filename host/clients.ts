@@ -13,11 +13,8 @@ type ClientSpec = {
 	label: string;
 	scope: Scope;
 	format: "json" | "toml";
-	/** Where the config lives, given the project root. */
 	file: (cwd: string) => string;
-	/** JSON only: the top-level key that holds the server map. */
 	key?: string;
-	/** JSON only: the server entry to write, given the resolved server path. */
 	entry?: (serverPath: string) => Record<string, unknown>;
 };
 
@@ -100,14 +97,17 @@ function serverPathFor(spec: ClientSpec, cwd: string, packageDir: string): strin
 	return relative(cwd, absolute).split("\\").join("/");
 }
 
-/** Matches the `[mcp_servers.jet]` table this tool owns, so re-running init is a no-op. */
 export function tomlTablePattern(): RegExp {
-	// anchored to a line start so a commented-out `# [mcp_servers.jet]` does not count as present,
-	// tolerant of the CRLF endings a config written on Windows will have, and of the whitespace
-	// TOML allows inside a table header
-	const gap = "[\\t ]*";
-	const header = ["\\[", "mcp_servers", "\\.", SERVER_KEY, "\\]"].join(gap);
-	return new RegExp(`^${gap}${header}${gap}(#[^\\r\\n]*)?\\r?$`, "m");
+	const optionalSpace = "[\\t ]*";
+	const lineStart = "^";
+	const trailingComment = "(#[^\\r\\n]*)?";
+	const optionalCarriageReturn = "\\r?";
+	const lineEnd = "$";
+	const header = ["\\[", "mcp_servers", "\\.", SERVER_KEY, "\\]"].join(optionalSpace);
+	return new RegExp(
+		[lineStart, optionalSpace, header, optionalSpace, trailingComment, optionalCarriageReturn, lineEnd].join(""),
+		"m",
+	);
 }
 
 function tomlString(value: string): string {
