@@ -64,15 +64,23 @@ function navigationOrNull(): NavigationLike | null {
 	return "current" in handle ? handle.current : handle;
 }
 
-export function navigation(): NavigationLike {
-	const handle = shared.options.navigationRef;
-	if (!handle) throw new Error("No navigationRef registered; pass it to useAgentJet() or startAgentJet()");
-	const nav = navigationOrNull();
-	if (!nav) {
-		throw new Error(
+function navigationUnavailable(): Error {
+	if (shared.options.navigationRef) {
+		return new Error(
 			"navigationRef.current is null: the NavigationContainer is not mounted. Either the app is still starting, or it crashed and React unmounted the tree; check logs and tree.",
 		);
 	}
+	if (router()) {
+		return new Error(
+			"A router is registered but no navigationRef; pass useNavigationContainerRef() to read route state",
+		);
+	}
+	return new Error("No navigationRef registered; pass it to useAgentJet() or startAgentJet()");
+}
+
+export function navigation(): NavigationLike {
+	const nav = navigationOrNull();
+	if (!nav) throw navigationUnavailable();
 	return nav;
 }
 
@@ -179,13 +187,7 @@ function focusedPath(state: RouteState | undefined): string[] {
 
 export function navigationSummary(): unknown {
 	const nav = navigationOrNull();
-	if (!nav) {
-		if (router())
-			throw new Error(
-				"A router is registered but no navigationRef; pass useNavigationContainerRef() to read route state",
-			);
-		throw new Error("No navigationRef registered; pass it to useAgentJet()");
-	}
+	if (!nav) throw navigationUnavailable();
 
 	const root = nav.getRootState() as RouteState | undefined;
 

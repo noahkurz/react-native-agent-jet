@@ -70,6 +70,11 @@ describe("navigateTo with React Navigation", () => {
 		expect(calls).toHaveLength(1);
 	});
 
+	test("nav_state says the container is not mounted rather than blaming the setup", () => {
+		setOptions({ navigationRef: { current: null } as never });
+		expect(() => navigationSummary()).toThrow(/not mounted/);
+	});
+
 	test("explains itself when the container is not mounted yet", () => {
 		setOptions({ navigationRef: { current: null } });
 		expect(() => navigateTo("Search")).toThrow(/not mounted/);
