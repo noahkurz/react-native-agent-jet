@@ -15,9 +15,11 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 		},
 		async ({ platform }) => {
 			app.preferred = platform;
-			return text(
-				`Driving ${platform}${app.connected ? ` (${app.device?.appName ?? "app"} connected)` : " (no app connected yet)"}`,
-			);
+
+			const selected = app.connectionFor(platform);
+			const state = selected ? ` (${selected.device.appName ?? "app"} connected)` : " (no app connected yet)";
+
+			return text(`Driving ${platform}${state}`);
 		},
 	);
 
