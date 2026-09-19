@@ -356,7 +356,7 @@ iOS itself is macOS-only because the iOS Simulator is.
 ```bash
 bun install
 bun run typecheck
-bun test          # 133 tests, no device needed
+bun test          # 144 tests, no device needed
 bun run build     # builds the host (MCP server + CLI) into dist/
 ```
 
