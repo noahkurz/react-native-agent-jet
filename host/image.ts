@@ -53,7 +53,8 @@ export type Screenshot = {
 };
 
 export type SizeRequest = {
-	/** A hard output width in pixels. Honoured exactly; says nothing about points. */
+	/** Preferred output width in pixels. The image is never upscaled and stays native when no
+	 *  resizer is available, so the result may be wider or narrower. Says nothing about points. */
 	pixelWidth?: number | null;
 	/** The screen's width in points, if known. Only this can make the result tap-safe. */
 	pointWidth?: number | null;

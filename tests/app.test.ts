@@ -24,7 +24,12 @@ afterEach(async () => {
 });
 
 /** Connect a fake app that answers every request with `result`. */
-function fakeApp(port: number, platform: "ios" | "android", result: unknown = { ok: true }): Promise<WebSocket> {
+function fakeApp(
+	port: number,
+	platform: "ios" | "android",
+	result: unknown = { ok: true },
+	appName = `${platform}-app`,
+): Promise<WebSocket> {
 	return new Promise((resolve, reject) => {
 		const socket = new WebSocket(`ws://127.0.0.1:${port}`);
 		opened.push(socket);
@@ -43,7 +48,7 @@ function fakeApp(port: number, platform: "ios" | "android", result: unknown = { 
 						screenHeight: 800,
 						pixelRatio: 2,
 						fontScale: 1,
-						appName: `${platform}-app`,
+						appName,
 					},
 				}),
 			);
@@ -131,11 +136,12 @@ describe("connection registry", () => {
 	test("a second app on the same platform replaces the first", async () => {
 		const p = nextPort();
 		const app = serve(p);
-		await fakeApp(p, "ios");
-		await until(() => app.all.length === 1, "the first app to register");
-		await fakeApp(p, "ios");
-		await until(() => app.all.length === 1 && app.connected, "the replacement to register");
-		expect(app.all.filter((a) => a.platform === "ios")).toHaveLength(1);
+		await fakeApp(p, "ios", { ok: true }, "first-launch");
+		await until(() => app.all[0]?.appName === "first-launch", "the first app to register");
+		await fakeApp(p, "ios", { ok: true }, "second-launch");
+		await until(() => app.all[0]?.appName === "second-launch", "the replacement to register");
+		expect(app.all).toHaveLength(1);
+		expect(app.connected).toBe(true);
 	});
 });
 

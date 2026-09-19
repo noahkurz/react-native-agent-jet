@@ -226,6 +226,7 @@ function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 		!only.scrollable &&
 		(!only.testID || only.testID === semantic.node.testID) &&
 		(!only.label || only.label === semantic.node.label) &&
+		(!only.role || only.role === semantic.node.role) &&
 		(!only.text || !semantic.node.text);
 	// Only collapse when the child is the same control: same handler, and nothing extra to lose.
 	const absorbsWrapper =
@@ -236,7 +237,8 @@ function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 		!only.scrollable &&
 		!semantic.node.text &&
 		(!only.testID || only.testID === semantic.node.testID) &&
-		(!only.label || only.label === semantic.node.label);
+		(!only.label || only.label === semantic.node.label) &&
+		(!only.role || only.role === semantic.node.role);
 	if (!absorbsText && !absorbsWrapper) return;
 	if (only.text) semantic.node.text = only.text;
 	if (only.testID && !semantic.node.testID) semantic.node.testID = only.testID;

@@ -101,6 +101,30 @@ describe("what survives the walk", () => {
 		expect(node.label).toBe("Save");
 		expect(node.role).toBe("button");
 	});
+
+	test("keeps a child whose role differs from its parent's instead of collapsing it away", () => {
+		// collapsing here would drop the image role entirely, since the parent already has one
+		mountTree(
+			fiber({}, [
+				host("View", { role: "button", onPress: () => {} }, [
+					host("View", { role: "image", accessibilityLabel: "Avatar" }),
+				]),
+			]),
+		);
+		const node = snapshot().roots[0]!;
+		expect(node.role).toBe("button");
+		expect(node.children?.[0]?.role).toBe("image");
+	});
+
+	test("still collapses a child that carries no role of its own", () => {
+		mountTree(
+			fiber({}, [host("View", { role: "button", onPress: () => {} }, [host("RCTText", {}, [textNode("Save")])])]),
+		);
+		const node = snapshot().roots[0]!;
+		expect(node.role).toBe("button");
+		expect(node.text).toBe("Save");
+		expect(node.children ?? []).toHaveLength(0);
+	});
 });
 
 describe("what the walk hides", () => {

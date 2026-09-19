@@ -43,7 +43,9 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 					.number()
 					.int()
 					.optional()
-					.describe("Force the output width in pixels. Coordinates are then pixels, not points."),
+					.describe(
+						"Preferred output width in pixels; the image is never upscaled. Coordinates are then pixels, not points.",
+					),
 				platform: platformSchema,
 			},
 		},
