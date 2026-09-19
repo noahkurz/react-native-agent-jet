@@ -2,7 +2,7 @@ import type { UINode } from "../../src/protocol.js";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { DEFAULT_WAIT_MS, POLL_INTERVAL_MS, STATUS_WAIT_MS } from "../constants.js";
+import { DEFAULT_SCREENSHOT_SCALE, DEFAULT_WAIT_MS, POLL_INTERVAL_MS, STATUS_WAIT_MS } from "../constants.js";
 import { android, hasAdb } from "../android.js";
 import { deviceFor } from "../devices.js";
 import { ios } from "../ios.js";
@@ -38,29 +38,43 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 	server.registerTool(
 		"screenshot",
 		{
-			description:
-				"Capture the device screen. When the app is connected the image is scaled so 1 image pixel = 1 point (dp on Android) and coordinates read off it can be passed straight to tap and swipe. The reply says which scale was used.",
+			description: `Capture the device screen. Defaults to ${DEFAULT_SCREENSHOT_SCALE}× the screen's point size, which costs a quarter of the tokens of a full-size image and still shows layout, spacing and colour — the text on screen is what 'tree' is for. Pass scale:1 when you need to read rendered text, such as an error overlay. The reply says how to convert coordinates read off the image.`,
 			inputSchema: {
+				scale: z
+					.number()
+					.positive()
+					.max(1)
+					.optional()
+					.describe(
+						`Fraction of the screen's point size (default ${DEFAULT_SCREENSHOT_SCALE}). 1 means 1 image pixel = 1 point, so coordinates can be passed straight to tap and swipe.`,
+					),
 				width: z
 					.number()
 					.int()
+					.positive()
 					.optional()
 					.describe(
-						"Preferred output width in pixels; the image is never upscaled. Coordinates are then pixels, not points.",
+						"Absolute output width in pixels. Overrides scale, is never upscaled, and is the only size control when no app is connected.",
 					),
 				platform: platformSchema,
 			},
 		},
-		async ({ width, platform }) => {
+		async ({ scale, width, platform }) => {
 			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
-			const shot = await (await deviceFor(app, platform)).screenshot({ preferredPixelWidth: width, pointWidth });
+			const shot = await (
+				await deviceFor(app, platform)
+			).screenshot({
+				preferredPixelWidth: width,
+				pointWidth,
+				scale,
+			});
 			const data = (await readFile(shot.path)).toString("base64");
 
-			const pixelsPerPoint = pointWidth === null ? null : shot.width / pointWidth;
+			const pointsPerPixel = pointWidth === null ? null : pointWidth / shot.width;
 			const howToConvert =
-				pixelsPerPoint === null
-					? "no app is connected, so the point size of this screen is unknown"
-					: `divide them by ${pixelsPerPoint.toFixed(2)} to get tap coordinates`;
+				pointsPerPixel === null
+					? "no app is connected, so the point size of this screen is unknown and coordinates cannot be converted"
+					: `multiply coordinates read off it by ${Number(pointsPerPixel.toFixed(2))} to get points for tap/swipe`;
 
 			return {
 				content: [
@@ -69,7 +83,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 						type: "text",
 						text: shot.inPoints
 							? `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt — safe for tap/swipe coordinates)`
-							: `Saved to ${shot.path} (${shot.width}px wide — these are pixels, not points; ${howToConvert})`,
+							: `Saved to ${shot.path} (${shot.width}px wide — ${howToConvert})`,
 					},
 				],
 			};

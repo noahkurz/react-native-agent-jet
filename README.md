@@ -211,14 +211,14 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 
 **See the screen**
 
-| Tool                | What it does                                                                                                                                                                                                                                |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse |
-| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                               |
-| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                      |
-| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                             |
-| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                           |
-| `screenshot`        | A PNG, for when you need to _see_. Usually scaled so 1px = 1pt (dp), but it falls back to native pixels when the scale is unknown or no resizer is available. **The reply states which**, so read it before using coordinates for taps      |
+| Tool                | What it does                                                                                                                                                                                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                    |
+| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                                                  |
+| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                                         |
+| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                                                |
+| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                                              |
+| `screenshot`        | A PNG, for when you need to _see_. Defaults to half the screen's point size — a quarter of the tokens, and still enough for layout. Pass `scale:1` to read rendered text. **The reply says how to convert coordinates**, so read it before using them for taps |
 
 **Act**
 
@@ -257,7 +257,9 @@ Every element tool takes a `target`:
 
 ## Token efficiency
 
-Agents drive this by reading a tree and acting on selectors — not by screenshotting every step. The act-and-verify loop that dominates a session is roughly **20–50× cheaper** than screenshot-driving, where each step is a ~1,000–1,600-token image the model must vision-parse.
+Agents drive this by reading a tree and acting on selectors — not by screenshotting every step. The act-and-verify loop that dominates a session is roughly **20–50× cheaper** than screenshot-driving, where every step is an image the model must vision-parse.
+
+Images are billed by area, so the lever is pixels, not file size: `screenshot` renders at half the screen's point size by default, which costs a quarter of a full-size capture. Text on screen is what `tree` is for, leaving the image to show layout, spacing and colour — all of which survive the downscale. Pass `scale:1` when you genuinely need to read rendered text, such as an error overlay.
 
 Approximate output tokens per call (demo Home screen):
 
@@ -269,7 +271,8 @@ Approximate output tokens per call (demo Home screen):
 | `tree` · `interactive:true`  |          ~70 | actionable nodes only                     |
 | `tree` (default)             |         ~165 | whole screen, no coordinates              |
 | `tree` · `frames:true`       |         ~290 | adds coordinates                          |
-| `screenshot`                 | ~1,000–1,600 | it's an image                             |
+| `screenshot` (default)       | **~110–140** | half point size — layout, not text        |
+| `screenshot` · `scale:1`     |     ~450–560 | full point size, legible text             |
 
 The defaults lean this way on purpose: `tree` omits coordinates (selectors don't need them), `nav_state` returns just the path, and `changesSince:true` turns verification into a diff. On busy screens that's exactly where `interactive:true` and `changesSince:true` earn their keep.
 
@@ -322,7 +325,7 @@ Every bridge internal is absent; only the empty wrapper name survives. Nothing t
 | **macOS**           | ✅ full                                        | ✅ full                   |
 | **Windows / Linux** | — Apple only allows the iOS Simulator on macOS | ✅ full                   |
 
-On Windows and Linux you drive Android exactly as on macOS — `adb` is cross-platform and handles taps, typing, screenshots and lifecycle. The only difference: screenshots come back at the device's native resolution (macOS auto-downscales them with `sips`), which just means slightly larger images. Everything the agent reads and does — `tree`, `press`, `navigate`, `state`, `logs`, `network` — is identical, since that all runs inside the app.
+On Windows and Linux you drive Android exactly as on macOS — `adb` is cross-platform and handles taps, typing, screenshots and lifecycle. Screenshots are resized in-process with nothing but `node:zlib`, so they come back at the same size and cost on every platform. Everything the agent reads and does — `tree`, `press`, `navigate`, `state`, `logs`, `network` — is identical, since that all runs inside the app.
 
 iOS itself is macOS-only because the iOS Simulator is.
 

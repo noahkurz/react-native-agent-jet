@@ -50,7 +50,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"tap",
 		{
 			description:
-				"Real touch at a point (in points, matching screenshot pixels). Useful for native UI the React tree cannot see, such as system alerts. Slow on iOS because AXe serializes the accessibility tree first.",
+				"Real touch at a point, in points — the units tree and find report. Screenshots are scaled down by default, so convert anything read off one using the factor in its reply. Useful for native UI the React tree cannot see, such as system alerts. Slow on iOS because AXe serializes the accessibility tree first.",
 			inputSchema: { x: z.number(), y: z.number(), platform: platformSchema },
 		},
 		async ({ x, y, platform }) => {
