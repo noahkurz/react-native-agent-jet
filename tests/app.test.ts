@@ -197,3 +197,18 @@ describe("server startup", () => {
 		expect(ignored.port).toBe(taken.port);
 	});
 });
+
+describe("waiting for a particular platform", () => {
+	test("a waiter is not discarded when a different platform connects first", async () => {
+		const app = await serve();
+
+		const waitingForIos = app.ready(4_000, "ios");
+
+		await fakeApp(app.port, "android");
+		await until(() => app.all.length === 1, "android to register");
+
+		await fakeApp(app.port, "ios");
+
+		expect(await waitingForIos).toBe(true);
+	});
+});

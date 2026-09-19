@@ -149,7 +149,8 @@ export class AppConnection {
 					(connection) => connection.socket !== socket && connection.device.platform !== message.device.platform,
 				);
 				this.connections.push({ socket, device: message.device, version: message.version, connectedAt: Date.now() });
-				for (const wake of this.waiters.splice(0)) wake();
+				const stillWaiting = [...this.waiters];
+				for (const wake of stillWaiting) wake();
 			}
 			return;
 		}
