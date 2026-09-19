@@ -101,8 +101,35 @@ describe("android shell quoting", () => {
 	});
 });
 
-describe("device selection without an app connected", () => {
+describe("which device a tool drives", () => {
 	const noApp = { connectionFor: () => null, device: null, preferred: null } as never;
+
+	/** An app connected on `connected`, with `preferred` chosen via select_platform. */
+	const appWith = (connected: "ios" | "android", preferred: "ios" | "android" | null = null) =>
+		({
+			preferred,
+			device: { platform: connected, pixelRatio: 2 },
+			connectionFor: (platform?: string) => {
+				if (platform && platform !== connected) return null;
+				if (preferred && preferred !== connected) return null;
+				return { device: { platform: connected, pixelRatio: 2 } };
+			},
+		}) as never;
+
+	test("an explicit per-call platform wins over everything", async () => {
+		const { deviceFor } = await import("../host/devices.js");
+		expect((await deviceFor(appWith("ios", "ios"), "android")).platform).toBe("android");
+	});
+
+	test("select_platform wins over the connected app", async () => {
+		const { deviceFor } = await import("../host/devices.js");
+		expect((await deviceFor(appWith("ios", "android"))).platform).toBe("android");
+	});
+
+	test("the connected app is used when no platform was selected", async () => {
+		const { deviceFor } = await import("../host/devices.js");
+		expect((await deviceFor(appWith("android"))).platform).toBe("android");
+	});
 
 	test("falls back to Android when the iOS toolchain is absent", async () => {
 		// on a machine without xcrun the iOS probe throws; it must not abort the search

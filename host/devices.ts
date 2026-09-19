@@ -4,7 +4,7 @@ import type { Device, Platform } from "./device.js";
 import { ios } from "./ios.js";
 
 export async function deviceFor(app: AppConnection, want?: Platform): Promise<Device> {
-	const platform = want ?? app.connectionFor()?.device.platform ?? app.preferred ?? undefined;
+	const platform = want ?? app.preferred ?? app.connectionFor()?.device.platform;
 	if (platform === "android") {
 		setPixelRatio(app.connectionFor("android")?.device.pixelRatio ?? app.device?.pixelRatio);
 		return android;
