@@ -171,3 +171,29 @@ describe("select_platform is honoured strictly", () => {
 		expect(await app.request("ping", {})).toBe("from-ios" as never);
 	});
 });
+
+describe("server startup", () => {
+	test("listening resolves once the port is known", async () => {
+		const app = await serve();
+		expect(app.port).toBeGreaterThan(0);
+	});
+
+	test("listening rejects instead of hanging when the port is taken", async () => {
+		const taken = await serve();
+
+		const clash = new AppConnection(taken.port);
+		servers.push(clash);
+
+		await expect(clash.listening).rejects.toThrow(/in use|EADDRINUSE/i);
+	});
+
+	test("a caller that never awaits listening does not bring the process down", async () => {
+		const taken = await serve();
+
+		const ignored = new AppConnection(taken.port);
+		servers.push(ignored);
+
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(ignored.port).toBe(taken.port);
+	});
+});

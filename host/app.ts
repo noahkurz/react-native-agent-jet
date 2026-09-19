@@ -26,6 +26,11 @@ type Pending = {
 
 type Connection = { socket: WebSocket; device: DeviceInfo; version: string; connectedAt: number };
 
+function safeToIgnore<T>(promise: Promise<T>): Promise<T> {
+	promise.catch(() => {});
+	return promise;
+}
+
 export class AppConnection {
 	private connections: Connection[] = [];
 	private pending = new Map<number, Pending>();
@@ -44,7 +49,16 @@ export class AppConnection {
 		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
 		const server = new WebSocketServer({ port: requestedPort, host });
 		this.server = server;
-		this.listening = new Promise((resolve) => server.once("listening", () => resolve()));
+		this.listening = safeToIgnore(
+			new Promise<void>((resolve, reject) => {
+				const failStartup = (error: Error) => reject(error);
+				server.once("error", failStartup);
+				server.once("listening", () => {
+					server.off("error", failStartup);
+					resolve();
+				});
+			}),
+		);
 
 		const reachableBeyondLoopback = !LOOPBACK_HOSTS.has(host);
 		if (reachableBeyondLoopback) {
