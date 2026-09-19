@@ -4,15 +4,18 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
-const IHDR_MARKER_START = 8 + 4;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const CHUNK_LENGTH_BYTES = 4;
+const IHDR_MARKER_START = PNG_SIGNATURE.length + CHUNK_LENGTH_BYTES;
 const IHDR_MARKER_END = IHDR_MARKER_START + "IHDR".length;
 const IHDR_WIDTH_OFFSET = IHDR_MARKER_END;
 const IHDR_HEADER_LENGTH = IHDR_WIDTH_OFFSET + 4 + 4;
 
 export async function pngWidth(path: string): Promise<number> {
 	const buffer = await readFile(path);
+	const startsWithSignature = buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
 	const marker = buffer.toString("ascii", IHDR_MARKER_START, IHDR_MARKER_END);
-	if (buffer.length < IHDR_HEADER_LENGTH || marker !== "IHDR") {
+	if (buffer.length < IHDR_HEADER_LENGTH || !startsWithSignature || marker !== "IHDR") {
 		throw new Error("Not a PNG or unexpected header");
 	}
 	return buffer.readUInt32BE(IHDR_WIDTH_OFFSET);

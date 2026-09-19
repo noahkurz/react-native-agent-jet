@@ -22,6 +22,18 @@ describe("pngWidth", () => {
 		expect(await pngWidth(pngHeaderOnly(1320))).toBe(1320);
 	});
 
+	test("rejects a long file that forges the IHDR marker without the png signature", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
+		const path = join(dir, "forged.png");
+		const forged = Buffer.alloc(64);
+		forged.write("IHDR", 12, "ascii");
+		forged.writeUInt32BE(1320, 16);
+		writeFileSync(path, forged);
+		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
+		await expect(sizeScreenshot(path, { pointWidth: 440 })).rejects.toThrow(/Not a PNG/);
+		rmSync(dir, { recursive: true, force: true });
+	});
+
 	test("rejects a file that is not a png rather than returning nonsense", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
 		const path = join(dir, "not.png");
