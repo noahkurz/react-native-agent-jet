@@ -15,7 +15,7 @@ async function run(command: string, args: string[]): Promise<string> {
 	return stdout;
 }
 
-export async function bootedUdid(): Promise<string> {
+async function bootedUdid(): Promise<string> {
 	const raw = await run("xcrun", ["simctl", "list", "devices", "booted", "-j"]);
 	const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ udid: string; state: string; name: string }>> };
 	for (const devices of Object.values(parsed.devices)) {
