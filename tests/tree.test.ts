@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import type { Fiber } from "../src/tree/types";
+import { MAX_WALK_DEPTH } from "../src/tree/names";
 
 mock.module("react-native", () => ({
 	StyleSheet: { flatten: (style: unknown) => style },
@@ -109,6 +110,20 @@ describe("what survives the walk", () => {
 		const node = snapshot().roots[0]!;
 		expect(node.role).toBe("button");
 		expect(node.children?.[0]?.role).toBe("image");
+	});
+
+	test("collapses a child whose role the parent does not have, carrying the role up", () => {
+		const onPress = () => {};
+		mountTree(
+			fiber({}, [
+				host("View", { accessibilityLabel: "Home tab", onPress }, [
+					host("View", { accessibilityLabel: "Home tab", role: "button", onPress }),
+				]),
+			]),
+		);
+		const node = snapshot().roots[0]!;
+		expect(node.role).toBe("button");
+		expect(node.children ?? []).toHaveLength(0);
 	});
 
 	test("still collapses a child that carries no role of its own", () => {
@@ -261,5 +276,25 @@ describe("finding nodes", () => {
 
 	test("tree returns the same nodes as the snapshot", async () => {
 		expect((await tree({ layout: false })).map((n) => n.text)).toEqual(["Add to cart", "Checkout"]);
+	});
+});
+
+describe("a pathologically deep tree", () => {
+	function chainOfDepth(depth: number): Fiber {
+		let node = host("View", { testID: "buried" });
+		for (let level = 0; level < depth; level++) node = host("View", {}, [node]);
+		return node;
+	}
+
+	test("walks a tree far deeper than any real app and still finds the deepest node", () => {
+		mountTree(fiber({}, [chainOfDepth(2_000)]));
+		const roots = snapshot().roots;
+		expect(roots).toHaveLength(1);
+		expect(roots[0]!.testID).toBe("buried");
+	});
+
+	test("refuses a tree deeper than the walk limit instead of overflowing the stack", () => {
+		mountTree(fiber({}, [chainOfDepth(MAX_WALK_DEPTH + 10)]));
+		expect(() => snapshot()).toThrow(/deeper than 3000 levels/);
 	});
 });

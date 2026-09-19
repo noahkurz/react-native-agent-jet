@@ -3,6 +3,7 @@ import type { UINode } from "../protocol";
 import {
 	HOST_COMPONENT,
 	HOST_TEXT,
+	MAX_WALK_DEPTH,
 	RN_SCREEN_STACK,
 	RN_SCROLL_VIEW,
 	RN_TEXT,
@@ -177,7 +178,14 @@ function lastSibling(fiber: Fiber): Fiber {
 	return current;
 }
 
-function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
+function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[], depth = 0): void {
+	const treeIsDeeperThanWeWillWalk = depth > MAX_WALK_DEPTH;
+	if (treeIsDeeperThanWeWillWalk) {
+		throw new Error(
+			`Component tree is deeper than ${MAX_WALK_DEPTH} levels; refusing to walk it rather than overflow the stack`,
+		);
+	}
+
 	if (fiber.tag === HOST_TEXT) {
 		if (typeof fiber.memoizedProps === "string") parent.textParts.push(fiber.memoizedProps);
 		return;
@@ -191,7 +199,7 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 
 	const screenStackChild = name === RN_SCREEN_STACK ? fiber.child : null;
 	if (screenStackChild) {
-		visit(lastSibling(screenStackChild), parent, all);
+		visit(lastSibling(screenStackChild), parent, all, depth + 1);
 		return;
 	}
 
@@ -219,7 +227,7 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 		}
 	}
 
-	for (let child = fiber.child; child; child = child.sibling) visit(child, current, all);
+	for (let child = fiber.child; child; child = child.sibling) visit(child, current, all, depth + 1);
 
 	if (created) finalize(created, all);
 }
@@ -228,7 +236,7 @@ function addsNoIdentityOfItsOwn(child: UINode, parent: UINode): boolean {
 	return (
 		(!child.testID || child.testID === parent.testID) &&
 		(!child.label || child.label === parent.label) &&
-		(!child.role || child.role === parent.role)
+		(!child.role || !parent.role || child.role === parent.role)
 	);
 }
 

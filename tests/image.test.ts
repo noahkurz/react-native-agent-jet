@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deflateSync } from "node:zlib";
+import { execFileSync } from "node:child_process";
 import { pngWidth, sizeScreenshot } from "../host/image.js";
 
 function pngHeaderOnly(width: number, height = 100): string {
@@ -16,6 +18,64 @@ function pngHeaderOnly(width: number, height = 100): string {
 	writeFileSync(path, ihdr);
 	return path;
 }
+
+function crc32(bytes: Buffer): number {
+	let crc = 0xffffffff;
+	for (const byte of bytes) {
+		crc ^= byte;
+		for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+	}
+	return (crc ^ 0xffffffff) >>> 0;
+}
+
+function chunk(type: string, data: Buffer): Buffer {
+	const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+	const length = Buffer.alloc(4);
+	length.writeUInt32BE(data.length);
+	const crc = Buffer.alloc(4);
+	crc.writeUInt32BE(crc32(body));
+	return Buffer.concat([length, body, crc]);
+}
+
+/** A real PNG with pixel data, so a resizer can actually resample it. */
+function resizablePng(width: number, height = 40): string {
+	const dir = mkdtempSync(join(tmpdir(), "jet-png-real-"));
+	const path = join(dir, "shot.png");
+
+	const header = Buffer.alloc(13);
+	header.writeUInt32BE(width, 0);
+	header.writeUInt32BE(height, 4);
+	header[8] = 8;
+	header[9] = 2;
+
+	const stride = width * 3;
+	const raw = Buffer.alloc((stride + 1) * height);
+	for (let row = 0; row < height; row++) {
+		const start = row * (stride + 1);
+		raw[start] = 0;
+		for (let x = 0; x < width; x++) raw[start + 1 + x * 3] = (x * 7) % 256;
+	}
+
+	writeFileSync(
+		path,
+		Buffer.concat([
+			Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+			chunk("IHDR", header),
+			chunk("IDAT", deflateSync(raw)),
+			chunk("IEND", Buffer.alloc(0)),
+		]),
+	);
+	return path;
+}
+
+const canResample = (() => {
+	try {
+		execFileSync("sips", ["--version"], { stdio: "ignore" });
+		return true;
+	} catch {
+		return false;
+	}
+})();
 
 describe("pngWidth", () => {
 	test("reads the width from the header with no external tools", async () => {
@@ -62,7 +122,22 @@ describe("sizeScreenshot", () => {
 		expect(shot.inPoints).toBe(true);
 	});
 
-	test("an explicit pixel width is honoured but is never reported as points", async () => {
+	test.skipIf(!canResample)(
+		"an explicit pixel width wins over the point width, and is never reported as points",
+		async () => {
+			const shot = await sizeScreenshot(resizablePng(1320), { preferredPixelWidth: 800, pointWidth: 440 });
+			expect(shot.width).toBe(800);
+			expect(shot.inPoints).toBe(false);
+		},
+	);
+
+	test.skipIf(!canResample)("a point width is resized to and reported as points", async () => {
+		const shot = await sizeScreenshot(resizablePng(1320), { pointWidth: 440 });
+		expect(shot.width).toBe(440);
+		expect(shot.inPoints).toBe(true);
+	});
+
+	test("an unresizable image keeps its native width and is not claimed as points", async () => {
 		const shot = await sizeScreenshot(pngHeaderOnly(1320), { preferredPixelWidth: 800, pointWidth: 440 });
 		expect(shot.width).toBe(1320);
 		expect(shot.inPoints).toBe(false);

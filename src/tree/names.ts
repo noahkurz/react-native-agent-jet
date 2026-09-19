@@ -10,3 +10,5 @@ export const TEXT_TYPE = "Text";
 export const TEXT_INPUT_TYPE = "TextInput";
 export const SCROLL_VIEW_TYPE = "ScrollView";
 export const ROOT_TYPE = "Root";
+
+export const MAX_WALK_DEPTH = 3000;
