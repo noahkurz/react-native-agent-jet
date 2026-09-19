@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
@@ -10,11 +10,23 @@ const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const GRAYSCALE = 0;
 const RGB = 2;
 const PALETTE = 3;
-const CHANNELS: Record<number, number> = { [GRAYSCALE]: 1, [RGB]: 3 };
+const RGBA = 6;
+const CHANNELS: Record<number, number> = { [GRAYSCALE]: 1, [RGB]: 3, [RGBA]: 4 };
+
+const FIXTURES = mkdtempSync(join(tmpdir(), "jet-image-"));
+afterAll(() => rmSync(FIXTURES, { recursive: true, force: true }));
+
+let fixtureCount = 0;
+
+/** A fresh path under the one temporary root, so each fixture can be written in place. */
+function fixture(name = "shot.png"): string {
+	const dir = join(FIXTURES, String(fixtureCount++));
+	mkdirSync(dir);
+	return join(dir, name);
+}
 
 function pngHeaderOnly(width: number, height = 100): string {
-	const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
-	const path = join(dir, "shot.png");
+	const path = fixture();
 	const ihdr = Buffer.alloc(25);
 	SIGNATURE.copy(ihdr, 0);
 	ihdr.writeUInt32BE(13, 8);
@@ -44,8 +56,7 @@ function chunk(type: string, data: Buffer): Buffer {
 }
 
 function writePng(samples: Buffer, width: number, height: number, colorType: number): string {
-	const dir = mkdtempSync(join(tmpdir(), "jet-png-real-"));
-	const path = join(dir, "shot.png");
+	const path = fixture();
 
 	const header = Buffer.alloc(13);
 	header.writeUInt32BE(width, 0);
@@ -80,6 +91,23 @@ function resizablePng(width: number, height = 40): string {
 /** One row of greyscale samples, so a resample can be asserted sample by sample. */
 function greyscaleRow(values: number[]): string {
 	return writePng(Buffer.from(values), values.length, 1, GRAYSCALE);
+}
+
+/** A grid of greyscale samples, for asserting which pixels a crop kept. */
+function greyscaleGrid(rows: number[][]): string {
+	return writePng(Buffer.from(rows.flat()), rows[0]!.length, rows.length, GRAYSCALE);
+}
+
+/** Pixels as [r, g, b, a] quads, so alpha handling can be asserted. */
+function rgbaPng(pixels: number[][], width: number): string {
+	return writePng(Buffer.from(pixels.flat()), width, pixels.length / width, RGBA);
+}
+
+/** Each 2×2 block holds one value, so a 2:1 downscale should reproduce the blocks. */
+function blocks(size: number): number[][] {
+	return Array.from({ length: size }, (_, y) =>
+		Array.from({ length: size }, (_, x) => (Math.floor(y / 2) * 4 + Math.floor(x / 2)) * 10),
+	);
 }
 
 function paeth(left: number, up: number, upLeft: number): number {
@@ -142,8 +170,7 @@ describe("pngWidth", () => {
 	});
 
 	test("rejects a file whose IHDR chunk declares the wrong length", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
-		const path = join(dir, "bad-length.png");
+		const path = fixture("bad-length.png");
 		const bytes = Buffer.alloc(64);
 		SIGNATURE.copy(bytes, 0);
 		bytes.writeUInt32BE(25, 8);
@@ -151,27 +178,22 @@ describe("pngWidth", () => {
 		bytes.writeUInt32BE(1320, 16);
 		writeFileSync(path, bytes);
 		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
-		rmSync(dir, { recursive: true, force: true });
 	});
 
 	test("rejects a long file that forges the IHDR marker without the png signature", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
-		const path = join(dir, "forged.png");
+		const path = fixture("forged.png");
 		const forged = Buffer.alloc(64);
 		forged.write("IHDR", 12, "ascii");
 		forged.writeUInt32BE(1320, 16);
 		writeFileSync(path, forged);
 		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
 		await expect(sizeScreenshot(path, { pointWidth: 440 })).rejects.toThrow(/Not a PNG/);
-		rmSync(dir, { recursive: true, force: true });
 	});
 
 	test("rejects a file that is not a png rather than returning nonsense", async () => {
-		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
-		const path = join(dir, "not.png");
+		const path = fixture("not.png");
 		writeFileSync(path, "hello");
 		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
-		rmSync(dir, { recursive: true, force: true });
 	});
 });
 
@@ -213,14 +235,124 @@ describe("resampling", () => {
 		header[8] = 8;
 		header[9] = PALETTE;
 
-		const dir = mkdtempSync(join(tmpdir(), "jet-png-palette-"));
-		const path = join(dir, "palette.png");
+		const path = fixture("palette.png");
 		writeFileSync(path, Buffer.concat([SIGNATURE, chunk("IHDR", header), chunk("IEND", Buffer.alloc(0))]));
 
 		const shot = await sizeScreenshot(path, { pointWidth: 440 });
 		expect(shot.width).toBe(1320);
 		expect(shot.inPoints).toBe(false);
-		rmSync(dir, { recursive: true, force: true });
+	});
+});
+
+describe("cropping", () => {
+	const GRID = [
+		[10, 20, 30, 40],
+		[50, 60, 70, 80],
+		[90, 100, 110, 120],
+		[130, 140, 150, 160],
+	];
+
+	test("keeps only the requested region and reports where it came from", async () => {
+		const path = greyscaleGrid(GRID);
+		const shot = await sizeScreenshot(path, { pointWidth: 4, crop: { x: 1, y: 1, width: 2, height: 2 } });
+
+		expect(readPng(path).samples).toEqual([60, 70, 100, 110]);
+		expect(shot.cropped).toBe(true);
+		expect(shot.region).toEqual({ x: 1, y: 1, width: 2, height: 2 });
+	});
+
+	test("shows a crop at full detail rather than halving it again", async () => {
+		const shot = await sizeScreenshot(greyscaleGrid(GRID), {
+			pointWidth: 4,
+			crop: { x: 1, y: 1, width: 2, height: 2 },
+		});
+
+		expect(shot.width).toBe(2);
+		expect(shot.inPoints).toBe(true);
+	});
+
+	test("an explicit scale still applies to a crop", async () => {
+		const shot = await sizeScreenshot(greyscaleGrid(blocks(8)), {
+			pointWidth: 4,
+			scale: 0.5,
+			crop: { x: 0, y: 0, width: 4, height: 4 },
+		});
+
+		expect(shot.width).toBe(2);
+		expect(shot.inPoints).toBe(false);
+	});
+
+	test("maps the crop from points to pixels when the screen is denser than its points", async () => {
+		// 8px across 4pt is 2 pixels per point, so points 1–3 are pixels 2–6.
+		const path = greyscaleGrid(blocks(8));
+		const shot = await sizeScreenshot(path, { pointWidth: 4, crop: { x: 1, y: 1, width: 2, height: 2 } });
+
+		expect(shot.width).toBe(2);
+		expect(readPng(path).samples).toEqual([50, 60, 90, 100]);
+	});
+
+	test("clamps a crop that runs past the edge of the screen", async () => {
+		const path = greyscaleGrid(GRID);
+		const shot = await sizeScreenshot(path, { pointWidth: 4, crop: { x: 3, y: 3, width: 10, height: 10 } });
+
+		expect(shot.region).toEqual({ x: 3, y: 3, width: 1, height: 1 });
+		expect(readPng(path).samples).toEqual([160]);
+	});
+
+	test("scales a crop down rather than letting it cost more than the screen it replaces", async () => {
+		const shot = await sizeScreenshot(greyscaleGrid(blocks(8)), {
+			pointWidth: 8,
+			crop: { x: 0, y: 0, width: 8, height: 6 },
+		});
+
+		expect(shot.cropped).toBe(true);
+		expect(shot.width).toBeLessThan(8);
+	});
+
+	test("rejects a crop that is entirely off screen", async () => {
+		const path = greyscaleGrid(GRID);
+		await expect(sizeScreenshot(path, { pointWidth: 4, crop: { x: 10, y: 10, width: 2, height: 2 } })).rejects.toThrow(
+			/off screen/,
+		);
+	});
+
+	test("reports the whole screen, not a phantom crop, when the PNG cannot be decoded", async () => {
+		const shot = await sizeScreenshot(pngHeaderOnly(1320), {
+			pointWidth: 440,
+			crop: { x: 100, y: 10, width: 50, height: 10 },
+		});
+
+		expect(shot.width).toBe(1320);
+		expect(shot.cropped).toBe(false);
+		expect(shot.region?.x).toBe(0);
+		expect(shot.region?.width).toBe(440);
+	});
+});
+
+describe("alpha", () => {
+	test("averages colour premultiplied by alpha, so transparent pixels do not tint their neighbours", async () => {
+		// Averaging the raw samples would drag the red halfway to green.
+		const path = rgbaPng(
+			[
+				[255, 0, 0, 255],
+				[0, 255, 0, 0],
+			],
+			2,
+		);
+		await sizeScreenshot(path, { preferredPixelWidth: 1 });
+		expect(readPng(path).samples).toEqual([255, 0, 0, 128]);
+	});
+
+	test("a fully transparent region stays transparent", async () => {
+		const path = rgbaPng(
+			[
+				[0, 0, 0, 0],
+				[200, 200, 200, 0],
+			],
+			2,
+		);
+		await sizeScreenshot(path, { preferredPixelWidth: 1 });
+		expect(readPng(path).samples).toEqual([0, 0, 0, 0]);
 	});
 });
 
@@ -237,17 +369,30 @@ describe("sizeScreenshot", () => {
 		expect(shot.inPoints).toBe(true);
 	});
 
-	test("derives the point width from a fractional Android device scale", async () => {
+	test("halves against a fractional Android device scale once the app is connected", async () => {
 		// 1080px at 2.625 is 411.43pt, so half of it rounds to 206.
-		const shot = await sizeScreenshot(resizablePng(1080), { deviceScale: 2.625 });
+		const shot = await sizeScreenshot(resizablePng(1080), { pointWidth: 411.4285714285714, deviceScale: 2.625 });
 		expect(shot.width).toBe(206);
 		expect(shot.inPoints).toBe(false);
+	});
+
+	test("shows full detail when adb can place the screen but no app is connected", async () => {
+		// adb still reports the density, so the points are known -- but with no app there
+		// is no `tree` to read the text from, so halving it would lose the only copy.
+		const shot = await sizeScreenshot(resizablePng(1080), { deviceScale: 2.625 });
+		expect(shot.width).toBe(411);
+		expect(shot.inPoints).toBe(true);
 	});
 
 	test("caps the width when no app is connected and the point size is unknown", async () => {
 		const shot = await sizeScreenshot(resizablePng(1320));
 		expect(shot.width).toBe(UNKNOWN_POINT_WIDTH_MAX_PX);
 		expect(shot.inPoints).toBe(false);
+	});
+
+	test("scale still means full detail when the point size is unknown", async () => {
+		const shot = await sizeScreenshot(resizablePng(1320), { scale: 1 });
+		expect(shot.width).toBe(1320);
 	});
 
 	test("never upscales a screen already narrower than the cap", async () => {
@@ -257,9 +402,21 @@ describe("sizeScreenshot", () => {
 	});
 
 	test("falls back to the native image when the resize fails, without claiming points", async () => {
-		const shot = await sizeScreenshot(pngHeaderOnly(1080), { deviceScale: 2.625 });
+		const shot = await sizeScreenshot(pngHeaderOnly(1080), { pointWidth: 411.4285714285714, deviceScale: 2.625 });
 		expect(shot.width).toBe(1080);
 		expect(shot.inPoints).toBe(false);
+	});
+
+	test("leaves the capture readable when the resize cannot be written", async () => {
+		const path = resizablePng(1320);
+		const before = readFileSync(path);
+		// A directory where the temporary file must go makes the write fail, not the decode.
+		mkdirSync(`${path}.partial`);
+
+		const shot = await sizeScreenshot(path, { pointWidth: 440 });
+		expect(shot.width).toBe(1320);
+		expect(readFileSync(path).equals(before)).toBe(true);
+		expect(existsSync(`${path}.partial`)).toBe(false);
 	});
 
 	test("a fractional point width still counts as points once rounded", async () => {

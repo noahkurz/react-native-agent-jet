@@ -211,14 +211,14 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 
 **See the screen**
 
-| Tool                | What it does                                                                                                                                                                                                                                                   |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                    |
-| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                                                  |
-| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                                         |
-| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                                                |
-| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                                              |
-| `screenshot`        | A PNG, for when you need to _see_. Defaults to half the screen's point size — a quarter of the tokens, and still enough for layout. Pass `scale:1` to read rendered text. **The reply says how to convert coordinates**, so read it before using them for taps |
+| Tool                | What it does                                                                                                                                                                                                                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                                                                                                       |
+| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                                                                                                                                     |
+| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                                                                                                                            |
+| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                                                                                                                                   |
+| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                                                                                                                                 |
+| `screenshot`        | A PNG, for when you need to _see_. Defaults to half the screen's point size — a quarter of the tokens, and still enough for layout. `target:"Add to cart"` crops to one element at full detail for a fraction again; `scale:1` reads text on a whole screen. **The reply says how to convert coordinates**, so read it before using them for taps |
 
 **Act**
 
@@ -261,18 +261,21 @@ Agents drive this by reading a tree and acting on selectors — not by screensho
 
 Images are billed by area, so the lever is pixels, not file size: `screenshot` renders at half the screen's point size by default, which costs a quarter of a full-size capture. Text on screen is what `tree` is for, leaving the image to show layout, spacing and colour — all of which survive the downscale. Pass `scale:1` when you genuinely need to read rendered text, such as an error overlay.
 
+When the question is about one component rather than the whole screen, `target` crops to it — with a little context around it, and at full detail, since cropping has already cut the area many times over. Checking one card or button that way costs less than a `tree` call.
+
 Approximate output tokens per call (demo Home screen):
 
-| Call                         |       Tokens |                                           |
-| ---------------------------- | -----------: | ----------------------------------------- |
-| `find` / `press`             |          ~15 | a single element                          |
-| `tree` · `changesSince:true` |   **~10–40** | only what changed — the usual verify step |
-| `nav_state`                  |          ~30 | route + path (`full:true` ≈ 160)          |
-| `tree` · `interactive:true`  |          ~70 | actionable nodes only                     |
-| `tree` (default)             |         ~165 | whole screen, no coordinates              |
-| `tree` · `frames:true`       |         ~290 | adds coordinates                          |
-| `screenshot` (default)       | **~110–140** | half point size — layout, not text        |
-| `screenshot` · `scale:1`     |     ~450–560 | full point size, legible text             |
+| Call                         |     Tokens |                                           |
+| ---------------------------- | ---------: | ----------------------------------------- |
+| `find` / `press`             |        ~15 | a single element                          |
+| `tree` · `changesSince:true` | **~10–40** | only what changed — the usual verify step |
+| `nav_state`                  |        ~30 | route + path (`full:true` ≈ 160)          |
+| `tree` · `interactive:true`  |        ~70 | actionable nodes only                     |
+| `tree` (default)             |       ~165 | whole screen, no coordinates              |
+| `tree` · `frames:true`       |       ~290 | adds coordinates                          |
+| `screenshot` · `target`      | **~20–75** | one element, full detail                  |
+| `screenshot` (default)       |   ~110–140 | whole screen at half point size           |
+| `screenshot` · `scale:1`     |   ~450–560 | whole screen, legible text                |
 
 The defaults lean this way on purpose: `tree` omits coordinates (selectors don't need them), `nav_state` returns just the path, and `changesSince:true` turns verification into a diff. On busy screens that's exactly where `interactive:true` and `changesSince:true` earn their keep.
 
@@ -359,7 +362,7 @@ iOS itself is macOS-only because the iOS Simulator is.
 ```bash
 bun install
 bun run typecheck
-bun test          # 145 tests, no device needed
+bun test          # 171 tests, no device needed
 bun run build     # builds the host (MCP server + CLI) into dist/
 ```
 

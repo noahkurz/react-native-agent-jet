@@ -1,4 +1,5 @@
 import type { UINode } from "../src/protocol.js";
+import type { Screenshot } from "./image.js";
 
 const TEXT_LIMIT = 80;
 
@@ -129,4 +130,22 @@ export function formatDiff(diff: TreeDiff): string {
 	for (const id of diff.removed) lines.push(`- #${id}`);
 
 	return lines.length ? lines.join("\n") : "(no changes)";
+}
+
+/**
+ * How to turn a coordinate read off a screenshot back into a screen point. Kept to four
+ * decimals rather than two: on a 1320px capture the difference is a fraction of a pixel,
+ * where two decimals drift by several points down a tall screen.
+ */
+export function coordinateHint(shot: Screenshot): string {
+	if (!shot.region) return "the point size of this screen is unknown, so coordinates cannot be converted";
+
+	const pointsPerPixel = shot.region.width / shot.width;
+	const steps = [
+		shot.inPoints ? "1px = 1pt" : `multiply coordinates read off it by ${Number(pointsPerPixel.toFixed(4))}`,
+	];
+	const isOffset = shot.region.x !== 0 || shot.region.y !== 0;
+	if (isOffset) steps.push(`add (${Math.round(shot.region.x)},${Math.round(shot.region.y)})`);
+
+	return `${steps.join(", then ")} for tap/swipe`;
 }

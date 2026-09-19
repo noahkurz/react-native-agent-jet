@@ -1,6 +1,7 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { deflateSync, inflateSync } from "node:zlib";
-import { DEFAULT_SCREENSHOT_SCALE, UNKNOWN_POINT_WIDTH_MAX_PX } from "./constants.js";
+import type { Frame } from "../src/protocol.js";
+import { DEFAULT_SCREENSHOT_SCALE, FULL_DETAIL_SCALE, UNKNOWN_POINT_WIDTH_MAX_PX } from "./constants.js";
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const CHUNK_LENGTH_BYTES = 4;
@@ -19,6 +20,10 @@ const IHDR_DATA_END = IHDR_MARKER_END + IHDR_DATA_LENGTH;
 /** Channels per pixel for the PNG colour types that carry one sample per channel. */
 const CHANNELS_BY_COLOR_TYPE: Record<number, number> = { 0: 1, 2: 3, 4: 2, 6: 4 };
 
+/** Colour types whose last channel is alpha: greyscale+alpha and RGBA. */
+const HAS_ALPHA = new Set([4, 6]);
+
+const OPAQUE = 255;
 const SUPPORTED_BIT_DEPTH = 8;
 const NOT_INTERLACED = 0;
 
@@ -143,35 +148,46 @@ function unfilter(raw: Buffer, width: number, height: number, channels: number):
 }
 
 /**
- * Averages every source pixel a destination pixel covers, weighted by how much of it
+ * Scales `source` — a region of the decoded image, in pixels — down to the target size,
+ * averaging every source pixel a destination pixel covers, weighted by how much of it
  * falls inside. Device scales are rarely whole numbers — Android is usually 2.625 — so
  * dropping rows and columns would alias text into mush.
+ *
+ * Colour is averaged premultiplied by alpha, so a transparent pixel cannot drag its
+ * neighbours towards whatever colour happens to sit underneath it.
  */
 function resample(
 	pixels: Buffer,
-	width: number,
-	height: number,
-	channels: number,
+	imageWidth: number,
+	format: PixelFormat,
+	source: Frame,
 	targetWidth: number,
 	targetHeight: number,
 ): Buffer {
+	const { channels } = format;
+	const alphaChannel = HAS_ALPHA.has(format.colorType) ? channels - 1 : -1;
+	const colourChannels = alphaChannel === -1 ? channels : channels - 1;
+
 	const resized = Buffer.alloc(targetWidth * targetHeight * channels);
-	const horizontalRatio = width / targetWidth;
-	const verticalRatio = height / targetHeight;
+	const horizontalRatio = source.width / targetWidth;
+	const verticalRatio = source.height / targetHeight;
+	const lastRow = source.y + source.height - 1;
+	const lastColumn = source.x + source.width - 1;
 	const totals = new Float64Array(channels);
 
 	for (let row = 0; row < targetHeight; row++) {
-		const top = row * verticalRatio;
+		const top = source.y + row * verticalRatio;
 		const bottom = top + verticalRatio;
-		const lastSourceRow = Math.min(Math.ceil(bottom) - 1, height - 1);
+		const lastSourceRow = Math.min(Math.ceil(bottom) - 1, lastRow);
 
 		for (let column = 0; column < targetWidth; column++) {
-			const left = column * horizontalRatio;
+			const left = source.x + column * horizontalRatio;
 			const right = left + horizontalRatio;
-			const lastSourceColumn = Math.min(Math.ceil(right) - 1, width - 1);
+			const lastSourceColumn = Math.min(Math.ceil(right) - 1, lastColumn);
 
 			totals.fill(0);
 			let coverage = 0;
+			let colourCoverage = 0;
 
 			for (let y = Math.floor(top); y <= lastSourceRow; y++) {
 				const rowWeight = Math.min(y + 1, bottom) - Math.max(y, top);
@@ -182,15 +198,25 @@ function resample(
 					if (columnWeight <= 0) continue;
 
 					const weight = rowWeight * columnWeight;
-					const from = (y * width + x) * channels;
-					for (let channel = 0; channel < channels; channel++) totals[channel]! += pixels[from + channel]! * weight;
+					const from = (y * imageWidth + x) * channels;
+					const alpha = alphaChannel === -1 ? OPAQUE : pixels[from + alphaChannel]!;
+					const colourWeight = (weight * alpha) / OPAQUE;
+
+					for (let channel = 0; channel < colourChannels; channel++) {
+						totals[channel]! += pixels[from + channel]! * colourWeight;
+					}
+					if (alphaChannel !== -1) totals[alphaChannel]! += alpha * weight;
 					coverage += weight;
+					colourCoverage += colourWeight;
 				}
 			}
 
 			const to = (row * targetWidth + column) * channels;
-			for (let channel = 0; channel < channels; channel++) {
-				resized[to + channel] = coverage ? Math.round(totals[channel]! / coverage) : 0;
+			for (let channel = 0; channel < colourChannels; channel++) {
+				resized[to + channel] = colourCoverage ? Math.round(totals[channel]! / colourCoverage) : 0;
+			}
+			if (alphaChannel !== -1) {
+				resized[to + alphaChannel] = coverage ? Math.round(totals[alphaChannel]! / coverage) : 0;
 			}
 		}
 	}
@@ -258,43 +284,104 @@ function encodePng(pixels: Buffer, width: number, height: number, format: PixelF
 }
 
 /**
- * Rewrites the file at a smaller width and returns the width it ended up with. Anything
- * we cannot decode — a palette PNG, an interlaced one, a truncated one — keeps its
- * native size rather than failing the screenshot.
+ * Writes `source` — a region of the image, in pixels — back to the file at `targetWidth`,
+ * and returns that width. Returns null for anything we cannot decode (a palette PNG, an
+ * interlaced one, a truncated one) so the caller can fall back to the untouched capture
+ * rather than failing the screenshot.
  */
-async function downscaleIfPossible(
+async function render(
 	path: string,
 	buffer: Buffer,
 	header: Header,
-	requestedWidth: number,
-): Promise<number> {
-	const targetWidth = Math.max(1, Math.round(requestedWidth));
-	const wouldUpscale = targetWidth >= header.width;
-	if (wouldUpscale || !header.format) return header.width;
+	source: Frame,
+	targetWidth: number,
+): Promise<number | null> {
+	const coversEverything = source.width === header.width && source.height === header.height;
+	const alreadyRight = coversEverything && targetWidth === header.width;
+	if (alreadyRight) return header.width;
+	if (!header.format) return null;
 
+	// Built beside the capture and swapped in, so a failure part way through leaves the
+	// original readable rather than a truncated file the caller would go on to send.
+	const partial = `${path}.partial`;
 	try {
-		const { channels } = header.format;
-		const pixels = unfilter(inflateSync(compressedPixels(buffer)), header.width, header.height, channels);
-		const targetHeight = Math.max(1, Math.round((header.height * targetWidth) / header.width));
-		const resized = resample(pixels, header.width, header.height, channels, targetWidth, targetHeight);
-		await writeFile(path, encodePng(resized, targetWidth, targetHeight, header.format));
+		const pixels = unfilter(inflateSync(compressedPixels(buffer)), header.width, header.height, header.format.channels);
+		const targetHeight = Math.max(1, Math.round((source.height * targetWidth) / source.width));
+		const resized = resample(pixels, header.width, header.format, source, targetWidth, targetHeight);
+		await writeFile(partial, encodePng(resized, targetWidth, targetHeight, header.format));
+		await rename(partial, path);
 		return targetWidth;
 	} catch {
-		return header.width;
+		await rm(partial, { force: true, recursive: true }).catch(() => {});
+		return null;
 	}
+}
+
+/**
+ * Halving only pays when `tree` can supply the text the pixels lose, so a whole screen
+ * with the app connected is the only thing halved by default. A crop is shown at full
+ * detail instead — but never for more pixels than the screenshot it replaces, or
+ * cropping to a full-width element would quietly become the expensive option.
+ */
+function defaultScale(region: Frame, screen: Frame, appIsConnected: boolean): number {
+	const isWholeScreen = region.width === screen.width && region.height === screen.height;
+	if (isWholeScreen) return appIsConnected ? DEFAULT_SCREENSHOT_SCALE : FULL_DETAIL_SCALE;
+
+	const budget = screen.width * screen.height * DEFAULT_SCREENSHOT_SCALE ** 2;
+	const atFullDetail = region.width * region.height;
+	return atFullDetail <= budget ? FULL_DETAIL_SCALE : Math.sqrt(budget / atFullDetail);
+}
+
+function wholeImage(header: Header): Frame {
+	return { x: 0, y: 0, width: header.width, height: header.height };
+}
+
+/** The overlap of two rectangles, or null when they do not overlap at all. */
+function intersect(one: Frame, other: Frame): Frame | null {
+	const x = Math.max(one.x, other.x);
+	const y = Math.max(one.y, other.y);
+	const right = Math.min(one.x + one.width, other.x + other.width);
+	const bottom = Math.min(one.y + one.height, other.y + other.height);
+	if (right <= x || bottom <= y) return null;
+
+	return { x, y, width: right - x, height: bottom - y };
+}
+
+function clamp(value: number, low: number, high: number): number {
+	return Math.min(Math.max(value, low), high);
+}
+
+/** Converts a region in points to the pixels it covers, kept inside the image. */
+function toPixels(region: Frame, pixelsPerPoint: number, header: Header): Frame {
+	const x = clamp(Math.round(region.x * pixelsPerPoint), 0, header.width - 1);
+	const y = clamp(Math.round(region.y * pixelsPerPoint), 0, header.height - 1);
+
+	return {
+		x,
+		y,
+		width: clamp(Math.round(region.width * pixelsPerPoint), 1, header.width - x),
+		height: clamp(Math.round(region.height * pixelsPerPoint), 1, header.height - y),
+	};
 }
 
 export type Screenshot = {
 	path: string;
 	width: number;
+	/** True when one image pixel is one point, so coordinates need no conversion. */
 	inPoints: boolean;
+	/** What the image shows, in screen points, or null when the point size is unknown. */
+	region: Frame | null;
+	/** True when the image shows less than the whole screen. */
+	cropped: boolean;
 };
 
 export type SizeRequest = {
 	preferredPixelWidth?: number | null;
 	pointWidth?: number | null;
-	/** Fraction of the point width to render at. Defaults to DEFAULT_SCREENSHOT_SCALE. */
+	/** Fraction of the region's point width to render at. See defaultScale for the default. */
 	scale?: number | null;
+	/** Region to keep, in points. Ignored when the screen's point size is unknown. */
+	crop?: Frame | null;
 	deviceScale?: number;
 };
 
@@ -302,18 +389,43 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 	const buffer = await readFile(path);
 	const header = readHeader(buffer);
 
+	// `pointWidth` is the app reporting its own window; `deviceScale` is the device's
+	// density, which adb knows whether or not the app is running. So the app is connected
+	// only when the first is set, even though the second can still place the screen.
+	const appIsConnected = request.pointWidth != null;
 	const fromScale = request.deviceScale ? header.width / request.deviceScale : null;
 	const pointWidth = request.pointWidth ?? fromScale;
-	const pointWidthInPixels = pointWidth === null ? null : Math.round(pointWidth);
 
-	const scale = request.scale ?? DEFAULT_SCREENSHOT_SCALE;
-	// With no app connected the screen's point size is unknown, so there is nothing to
-	// scale; cap it instead, generously — that is the one case where the image is the
-	// only way to read the screen, because `tree` needs the app too.
-	const scaled = pointWidth === null ? UNKNOWN_POINT_WIDTH_MAX_PX : Math.round(pointWidth * scale);
-	const requested = request.preferredPixelWidth ?? scaled;
+	// Neither the app nor the device placed the screen, so points are unknown and there is
+	// nothing to scale or crop against. Cap the width generously instead: `tree` needs the
+	// app too, so this is the case where the image is the only way to read the screen.
+	// `scale` then falls back to a fraction of the capture itself, so scale:1 still means
+	// full detail as the tool promises.
+	if (pointWidth === null) {
+		const nativeFraction = request.scale == null ? null : Math.round(header.width * request.scale);
+		const requested = request.preferredPixelWidth ?? nativeFraction ?? UNKNOWN_POINT_WIDTH_MAX_PX;
+		const width = await render(path, buffer, header, wholeImage(header), clamp(requested, 1, header.width));
+		return { path, width: width ?? header.width, inPoints: false, region: null, cropped: false };
+	}
 
-	const width = await downscaleIfPossible(path, buffer, header, requested);
+	const pixelsPerPoint = header.width / pointWidth;
+	const screen: Frame = { x: 0, y: 0, width: pointWidth, height: header.height / pixelsPerPoint };
+	const region = request.crop ? intersect(request.crop, screen) : screen;
+	if (!region) throw new Error("The requested region is entirely off screen");
 
-	return { path, width, inPoints: pointWidthInPixels !== null && width === pointWidthInPixels };
+	const scale = request.scale ?? defaultScale(region, screen, appIsConnected);
+	const source = toPixels(region, pixelsPerPoint, header);
+	const requested = request.preferredPixelWidth ?? Math.round(region.width * scale);
+	const targetWidth = clamp(requested, 1, source.width);
+
+	const width = await render(path, buffer, header, source, targetWidth);
+	// Neither the crop nor the resize happened if we could not decode, so describe the
+	// untouched capture rather than a region the image does not actually show.
+	if (width === null) {
+		const inPoints = header.width === Math.round(screen.width);
+		return { path, width: header.width, inPoints, region: screen, cropped: false };
+	}
+
+	const cropped = region.width !== screen.width || region.height !== screen.height;
+	return { path, width, inPoints: width === Math.round(region.width), region, cropped };
 }

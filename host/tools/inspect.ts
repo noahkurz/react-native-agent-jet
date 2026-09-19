@@ -1,13 +1,29 @@
-import type { UINode } from "../../src/protocol.js";
+import type { Frame, UINode } from "../../src/protocol.js";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { DEFAULT_SCREENSHOT_SCALE, DEFAULT_WAIT_MS, POLL_INTERVAL_MS, STATUS_WAIT_MS } from "../constants.js";
+import {
+	CROP_MARGIN_POINTS,
+	DEFAULT_SCREENSHOT_SCALE,
+	DEFAULT_WAIT_MS,
+	POLL_INTERVAL_MS,
+	STATUS_WAIT_MS,
+} from "../constants.js";
 import { android, hasAdb } from "../android.js";
 import { deviceFor } from "../devices.js";
 import { ios } from "../ios.js";
-import { describeLine, diffTrees, filterTree, formatDiff, json, outline } from "../format.js";
-import { type ToolContext, platformSchema, shortenStack, targetSchema, text } from "./shared.js";
+import { coordinateHint, describeLine, diffTrees, filterTree, formatDiff, json, outline } from "../format.js";
+import { type ToolContext, locate, platformSchema, shortenStack, targetSchema, text } from "./shared.js";
+
+/** Widens a frame on every side, so a cropped element keeps some of its surroundings. */
+function grow(frame: Frame, margin: number): Frame {
+	return {
+		x: frame.x - margin,
+		y: frame.y - margin,
+		width: frame.width + margin * 2,
+		height: frame.height + margin * 2,
+	};
+}
 
 export function registerInspectTools(server: McpServer, { app, lastTree }: ToolContext) {
 	server.registerTool(
@@ -38,15 +54,20 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 	server.registerTool(
 		"screenshot",
 		{
-			description: `Capture the device screen. Defaults to ${DEFAULT_SCREENSHOT_SCALE}× the screen's point size, which costs a quarter of the tokens of a full-size image and still shows layout, spacing and colour — the text on screen is what 'tree' is for. Pass scale:1 when you need to read rendered text, such as an error overlay. The reply says how to convert coordinates read off the image.`,
+			description: `Capture the device screen. Defaults to ${DEFAULT_SCREENSHOT_SCALE}× the screen's point size, which costs a quarter of the tokens of a full-size image and still shows layout, spacing and colour — the text on screen is what 'tree' is for. Pass target to crop to one element, which is far cheaper again and shown at full detail. Pass scale:1 on a whole screen when you need to read rendered text, such as an error overlay. The reply says how to convert coordinates read off the image.`,
 			inputSchema: {
+				target: targetSchema
+					.optional()
+					.describe(
+						`Crop to this element instead of the whole screen, with ${CROP_MARGIN_POINTS}pt of context around it. Much cheaper than a full screen and shown at full detail, so it is the right way to look closely at one component.`,
+					),
 				scale: z
 					.number()
 					.positive()
 					.max(1)
 					.optional()
 					.describe(
-						`Fraction of the screen's point size (default ${DEFAULT_SCREENSHOT_SCALE}). 1 means 1 image pixel = 1 point, so coordinates can be passed straight to tap and swipe.`,
+						`Fraction of the captured region's point size (default ${DEFAULT_SCREENSHOT_SCALE}; full detail when target is given or no app is connected). 1 means 1 image pixel = 1 point.`,
 					),
 				width: z
 					.number()
@@ -59,32 +80,26 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 				platform: platformSchema,
 			},
 		},
-		async ({ scale, width, platform }) => {
+		async ({ target, scale, width, platform }) => {
 			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
+			const node = target === undefined ? null : await locate(app, target, undefined, platform);
+			if (node && !node.frame) throw new Error(`Element has no on-screen frame: ${describeLine(node)}`);
+
 			const shot = await (
 				await deviceFor(app, platform)
 			).screenshot({
 				preferredPixelWidth: width,
 				pointWidth,
 				scale,
+				crop: node?.frame ? grow(node.frame, CROP_MARGIN_POINTS) : null,
 			});
 			const data = (await readFile(shot.path)).toString("base64");
-
-			const pointsPerPixel = pointWidth === null ? null : pointWidth / shot.width;
-			const howToConvert =
-				pointsPerPixel === null
-					? "no app is connected, so the point size of this screen is unknown and coordinates cannot be converted"
-					: `multiply coordinates read off it by ${Number(pointsPerPixel.toFixed(2))} to get points for tap/swipe`;
+			const shows = shot.cropped && node ? `Cropped to ${describeLine(node)}` : "Full screen";
 
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
-					{
-						type: "text",
-						text: shot.inPoints
-							? `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt — safe for tap/swipe coordinates)`
-							: `Saved to ${shot.path} (${shot.width}px wide — ${howToConvert})`,
-					},
+					{ type: "text", text: `${shows} — saved to ${shot.path} (${shot.width}px wide; ${coordinateHint(shot)})` },
 				],
 			};
 		},

@@ -6,6 +6,7 @@ const STEPS = `- Call \`tree\` once to see everything on screen: text, labels, t
 - Prefer \`press\`, \`type_text\` and \`navigate\` with targets over coordinate taps.
 - After an action, call \`tree\` with \`changesSince:true\` to see only what changed (cheap), and \`logs\` for errors.
 - Use \`interactive:true\` on busy screens, and only ask for \`frames:true\` or \`screenshot\` when you need coordinates or a visual.
+- Need a visual of one component? Pass \`target\` to \`screenshot\` — it crops to that element at full detail for a fraction of a whole screen.
 - \`nav_state\` gives the focused route path; \`navigate\` jumps to a screen by route name (React Navigation) or path (Expo Router) from anywhere.
 - \`state\` reads values the app exposes; \`network\` shows HTTP traffic; Fast Refresh applies JS edits, \`reload\` restarts the bundle.`;
 

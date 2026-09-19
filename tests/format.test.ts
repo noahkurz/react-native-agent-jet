@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { UINode } from "../src/protocol.js";
-import { describeLine, diffTrees, filterTree, formatDiff, outline } from "../host/format.js";
+import type { Screenshot } from "../host/image.js";
+import { coordinateHint, describeLine, diffTrees, filterTree, formatDiff, outline } from "../host/format.js";
 
 const node = (over: Partial<UINode> & { id: number }): UINode => ({
 	type: "View",
@@ -112,5 +113,42 @@ describe("diffing a filtered tree", () => {
 	test("the same change is reported when nothing is filtered out", () => {
 		const diff = diffTrees(withCounter("1"), withCounter("2"));
 		expect(formatDiff(diff)).toContain("#2");
+	});
+});
+
+describe("coordinateHint", () => {
+	const shot = (over: Partial<Screenshot>): Screenshot => ({
+		path: "/tmp/shot.png",
+		width: 440,
+		inPoints: true,
+		region: { x: 0, y: 0, width: 440, height: 956 },
+		cropped: false,
+		...over,
+	});
+
+	test("says so when there is no way to convert", () => {
+		expect(coordinateHint(shot({ region: null }))).toMatch(/unknown/);
+	});
+
+	test("a full-detail screen needs no conversion", () => {
+		expect(coordinateHint(shot({}))).toBe("1px = 1pt for tap/swipe");
+	});
+
+	test("a halved screen gives the multiplier", () => {
+		expect(coordinateHint(shot({ width: 220, inPoints: false }))).toBe(
+			"multiply coordinates read off it by 2 for tap/swipe",
+		);
+	});
+
+	test("a crop also gives the origin to add back", () => {
+		const cropped = shot({ width: 424, region: { x: 8, y: 108, width: 424, height: 104 }, cropped: true });
+		expect(coordinateHint(cropped)).toBe("1px = 1pt, then add (8,108) for tap/swipe");
+	});
+
+	test("keeps enough precision that the error stays under a pixel down a tall screen", () => {
+		// Two decimals would say 0.33, drifting ~9pt by the bottom of a 2868px capture.
+		expect(coordinateHint(shot({ width: 1320, inPoints: false }))).toBe(
+			"multiply coordinates read off it by 0.3333 for tap/swipe",
+		);
 	});
 });
