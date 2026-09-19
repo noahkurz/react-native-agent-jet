@@ -103,8 +103,11 @@ function serverPathFor(spec: ClientSpec, cwd: string, packageDir: string): strin
 /** Matches the `[mcp_servers.jet]` table this tool owns, so re-running init is a no-op. */
 export function tomlTablePattern(): RegExp {
 	// anchored to a line start so a commented-out `# [mcp_servers.jet]` does not count as present,
-	// and tolerant of the CRLF endings a config written on Windows will have
-	return new RegExp(`^[\\t ]*\\[mcp_servers\\.${SERVER_KEY}\\][\\t ]*(#[^\\r\\n]*)?\\r?$`, "m");
+	// tolerant of the CRLF endings a config written on Windows will have, and of the whitespace
+	// TOML allows inside a table header
+	const gap = "[\\t ]*";
+	const header = ["\\[", "mcp_servers", "\\.", SERVER_KEY, "\\]"].join(gap);
+	return new RegExp(`^${gap}${header}${gap}(#[^\\r\\n]*)?\\r?$`, "m");
 }
 
 function tomlString(value: string): string {

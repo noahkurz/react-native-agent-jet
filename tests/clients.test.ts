@@ -148,6 +148,11 @@ describe("detecting an existing codex table", () => {
 		expect(registered("# [mcp_servers.jet]\r\n")).toBe(false);
 	});
 
+	test("recognises a header written with the whitespace toml allows", () => {
+		expect(registered("[ mcp_servers . jet ]\n")).toBe(true);
+		expect(registered("\t[mcp_servers.jet]\t\r\n")).toBe(true);
+	});
+
 	test("ignores a differently named table", () => {
 		expect(registered("[mcp_servers.jetpack]\r\n")).toBe(false);
 	});
