@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Button, Device, Point } from "./device.js";
 import { screenshotDir } from "./ios.js";
-import { sizeScreenshot, type Screenshot } from "./image.js";
+import { sizeScreenshot, type Screenshot, type SizeRequest } from "./image.js";
 
 const exec = promisify(execFile);
 
@@ -78,14 +78,14 @@ async function toPixels(point: Point): Promise<Point> {
 	return { x: Math.round(point.x * ratio), y: Math.round(point.y * ratio) };
 }
 
-export async function screenshot(targetWidth: number | null): Promise<Screenshot> {
+export async function screenshot(request: SizeRequest): Promise<Screenshot> {
 	const path = join(await screenshotDir(), `android-${Date.now()}.png`);
 	const { stdout } = await exec("adb", ["-s", await serial(), "exec-out", "screencap", "-p"], {
 		encoding: "buffer",
 		maxBuffer: 64 * 1024 * 1024,
 	});
 	await writeFile(path, stdout);
-	return sizeScreenshot(path, targetWidth, await pixelRatio());
+	return sizeScreenshot(path, { ...request, deviceScale: await pixelRatio() });
 }
 
 export async function tap(point: Point): Promise<void> {

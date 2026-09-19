@@ -26,7 +26,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 					bridgeVersion: app.version,
 					connectedApps: app.all,
 					preferredPlatform: app.preferred,
-					ios: { simulator: await ios.name().catch(() => null), axeInstalled: await ios.hasInput() },
+					ios: { simulator: await ios.name(), axeInstalled: await ios.hasInput() },
 					android: { device: adbInstalled ? await android.name() : null, adbInstalled },
 					websocketPort: app.port,
 				}),
@@ -48,19 +48,15 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			},
 		},
 		async ({ width, platform }) => {
-			// `width` is a pixel override; the app's windowWidth is a width in points. Only the second
-			// makes screenshot coordinates usable for taps, so they must not be conflated.
 			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
-			const shot = await (await deviceFor(app, platform)).screenshot(width ?? pointWidth);
-			const inPoints =
-				width === undefined ? shot.inPoints : pointWidth !== null && shot.width === Math.round(pointWidth);
+			const shot = await (await deviceFor(app, platform)).screenshot({ pixelWidth: width, pointWidth });
 			const data = (await readFile(shot.path)).toString("base64");
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
 					{
 						type: "text",
-						text: inPoints
+						text: shot.inPoints
 							? `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt — safe for tap/swipe coordinates)`
 							: `Saved to ${shot.path} (${shot.width}px wide — these are pixels, not points, so do not use them as tap coordinates)`,
 					},

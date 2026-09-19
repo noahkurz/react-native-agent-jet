@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { Button, Device, Point } from "./device.js";
-import { sizeScreenshot, type Screenshot } from "./image.js";
+import { sizeScreenshot, type Screenshot, type SizeRequest } from "./image.js";
 import { PACKAGE_NAME } from "./constants.js";
 
 const exec = promisify(execFile);
@@ -26,12 +26,14 @@ export async function bootedUdid(): Promise<string> {
 }
 
 export async function bootedName(): Promise<string | null> {
-	const raw = await run("xcrun", ["simctl", "list", "devices", "booted", "-j"]);
-	const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ state: string; name: string }>> };
-	for (const [runtime, devices] of Object.entries(parsed.devices)) {
-		const booted = devices.find((device) => device.state === "Booted");
-		if (booted) return `${booted.name} (${runtime.split(".").pop()})`;
-	}
+	try {
+		const raw = await run("xcrun", ["simctl", "list", "devices", "booted", "-j"]);
+		const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ state: string; name: string }>> };
+		for (const [runtime, devices] of Object.entries(parsed.devices)) {
+			const booted = devices.find((device) => device.state === "Booted");
+			if (booted) return `${booted.name} (${runtime.split(".").pop()})`;
+		}
+	} catch {}
 	return null;
 }
 
@@ -63,10 +65,10 @@ export async function screenshotDir(): Promise<string> {
 	return dir;
 }
 
-export async function screenshot(targetWidth: number | null): Promise<Screenshot> {
+export async function screenshot(request: SizeRequest): Promise<Screenshot> {
 	const path = join(await screenshotDir(), `screen-${Date.now()}.png`);
 	await run("xcrun", ["simctl", "io", await bootedUdid(), "screenshot", path]);
-	return sizeScreenshot(path, targetWidth);
+	return sizeScreenshot(path, request);
 }
 
 export async function tap(point: Point): Promise<void> {

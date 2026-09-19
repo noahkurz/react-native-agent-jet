@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { connect } from "node:net";
+import { networkInterfaces } from "node:os";
 import { WebSocket } from "ws";
 import { AppConnection } from "../host/app.js";
 import { HELLO } from "../src/protocol.js";
@@ -63,23 +65,46 @@ async function until(condition: () => boolean, label: string, timeoutMs = 5_000)
 	}
 }
 
+/** The first routable IPv4 address of this machine, or null when it only has loopback. */
+function lanAddress(): string | null {
+	for (const addresses of Object.values(networkInterfaces())) {
+		for (const address of addresses ?? []) {
+			if (address.family === "IPv4" && !address.internal) return address.address;
+		}
+	}
+	return null;
+}
+
+/** Whether a TCP connection to host:port is accepted within the timeout. */
+function accepts(host: string, port: number, timeoutMs = 1_000): Promise<boolean> {
+	return new Promise((resolve) => {
+		const socket = connect({ host, port });
+		const settle = (reachable: boolean) => {
+			socket.destroy();
+			resolve(reachable);
+		};
+		socket.setTimeout(timeoutMs);
+		socket.on("connect", () => settle(true));
+		socket.on("timeout", () => settle(false));
+		socket.on("error", () => settle(false));
+	});
+}
+
+const lan = lanAddress();
+
 describe("binding", () => {
-	test("listens on loopback only, so nothing on the network can reach it", async () => {
+	test("accepts connections on loopback", async () => {
 		const p = nextPort();
 		serve(p);
-		// loopback accepts
 		await fakeApp(p, "ios");
-		// a non-loopback interface does not
-		const lan = Bun.spawnSync([
-			"sh",
-			"-c",
-			`ipconfig getifaddr en0 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}'`,
-		]);
-		const ip = lan.stdout.toString().trim();
-		if (ip && ip !== "127.0.0.1") {
-			const reachable = Bun.spawnSync(["nc", "-z", "-w", "1", ip, String(p)]).exitCode === 0;
-			expect(reachable).toBe(false);
-		}
+		expect(await accepts("127.0.0.1", p)).toBe(true);
+	});
+
+	test.skipIf(lan === null)("refuses connections arriving on a routable interface", async () => {
+		const p = nextPort();
+		serve(p);
+		await fakeApp(p, "ios");
+		expect(await accepts(lan!, p)).toBe(false);
 	});
 });
 

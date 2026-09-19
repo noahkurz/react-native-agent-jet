@@ -1,4 +1,4 @@
-import type { Screenshot } from "./image.js";
+import type { Screenshot, SizeRequest } from "./image.js";
 
 export type Point = { x: number; y: number };
 
@@ -8,10 +8,11 @@ export type Button = "home" | "back" | "lock" | "side-button" | "recents" | "sir
 
 export type Device = {
 	platform: Platform;
+	/** The attached device, or null when none is attached or the toolchain is missing. Never rejects. */
 	name(): Promise<string | null>;
 	hasInput(): Promise<boolean>;
 	inputHint: string;
-	screenshot(targetWidth: number | null): Promise<Screenshot>;
+	screenshot(request: SizeRequest): Promise<Screenshot>;
 	tap(point: Point): Promise<void>;
 	tapAccessible?(selector: { id?: string; label?: string }): Promise<void>;
 	typeText(text: string): Promise<void>;

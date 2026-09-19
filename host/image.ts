@@ -52,21 +52,27 @@ export type Screenshot = {
 	inPoints: boolean;
 };
 
+export type SizeRequest = {
+	/** A hard output width in pixels. Honoured exactly; says nothing about points. */
+	pixelWidth?: number | null;
+	/** The screen's width in points, if known. Only this can make the result tap-safe. */
+	pointWidth?: number | null;
+	/** Device pixel ratio, used to derive the point width when it was not supplied. */
+	deviceScale?: number;
+};
+
 /**
- * Resolve a captured PNG to its final width. `targetWidth` is the width in points the caller wants
- * (normally the connected app's). When neither it nor the device scale is known, the image is left
- * at native resolution — and reported as such — rather than downscaled by a guessed factor.
+ * Resolve a captured PNG to its final width and say whether that width is in points.
+ * A pixel override and a point width are different things: only the latter makes the image's
+ * coordinates usable for taps, so they are kept apart rather than collapsed into one number.
  */
-export async function sizeScreenshot(
-	path: string,
-	targetWidth: number | null,
-	deviceScale?: number,
-): Promise<Screenshot> {
+export async function sizeScreenshot(path: string, request: SizeRequest = {}): Promise<Screenshot> {
 	const native = await pngWidth(path);
-	const requested = targetWidth ?? (deviceScale ? native / deviceScale : null);
-	if (requested === null) return { path, width: native, inPoints: false };
-	// Android reports a fractional width in dp, so compare against whole pixels.
-	const pointWidth = Math.round(requested);
-	const width = await downscaleIfPossible(path, native, pointWidth);
-	return { path, width, inPoints: width === pointWidth };
+	const derived = request.deviceScale ? native / request.deviceScale : null;
+	const pointWidth = request.pointWidth ?? derived;
+	const roundedPoints = pointWidth === null ? null : Math.round(pointWidth);
+	const target = request.pixelWidth ?? roundedPoints;
+	if (target === null) return { path, width: native, inPoints: false };
+	const width = await downscaleIfPossible(path, native, target);
+	return { path, width, inPoints: roundedPoints !== null && width === roundedPoints };
 }

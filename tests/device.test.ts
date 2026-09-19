@@ -118,3 +118,37 @@ describe("device selection without an app connected", () => {
 		}
 	});
 });
+
+describe("device name never rejects", () => {
+	/** The status tool reports every platform in one response, so one missing toolchain
+	 *  must yield null for that platform rather than failing the whole report. */
+	const withPathOf = async (dir: string, body: () => Promise<void>) => {
+		const previous = process.env.PATH;
+		process.env.PATH = dir;
+		try {
+			await body();
+		} finally {
+			process.env.PATH = previous;
+		}
+	};
+
+	test("ios reports null when xcrun is unavailable", async () => {
+		const { bootedName } = await import("../host/ios.js");
+		const empty = mkdtempSync(join(tmpdir(), "jet-empty-"));
+		await withPathOf(empty, async () => {
+			expect(await bootedName()).toBeNull();
+		});
+		rmSync(empty, { recursive: true, force: true });
+	});
+
+	test("android reports null when adb fails", async () => {
+		const { name } = await import("../host/android.js");
+		const broken = mkdtempSync(join(tmpdir(), "jet-broken-"));
+		writeFileSync(join(broken, "adb"), "#!/bin/sh\nexit 1\n");
+		chmodSync(join(broken, "adb"), 0o755);
+		await withPathOf(broken, async () => {
+			expect(await name()).toBeNull();
+		});
+		rmSync(broken, { recursive: true, force: true });
+	});
+});
