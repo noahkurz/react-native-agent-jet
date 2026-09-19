@@ -30,10 +30,6 @@ export type ExpoRouterLike = {
 };
 
 export type AgentJetOptions = {
-	/**
-	 * Best-effort redaction of secrets in captured logs and network bodies (default on).
-	 * Covers common cases only — extend with `keys`/`patterns` for your app, or `false` to disable.
-	 */
 	redact?: RedactOption;
 	url?: string;
 	appName?: string;
@@ -68,15 +64,23 @@ function navigationOrNull(): NavigationLike | null {
 	return "current" in handle ? handle.current : handle;
 }
 
-export function navigation(): NavigationLike {
-	const handle = shared.options.navigationRef;
-	if (!handle) throw new Error("No navigationRef registered; pass it to useAgentJet() or startAgentJet()");
-	const nav = navigationOrNull();
-	if (!nav) {
-		throw new Error(
+function navigationUnavailable(): Error {
+	if (shared.options.navigationRef) {
+		return new Error(
 			"navigationRef.current is null: the NavigationContainer is not mounted. Either the app is still starting, or it crashed and React unmounted the tree; check logs and tree.",
 		);
 	}
+	if (router()) {
+		return new Error(
+			"A router is registered but no navigationRef; pass useNavigationContainerRef() to read route state",
+		);
+	}
+	return new Error("No navigationRef registered; pass it to useAgentJet() or startAgentJet()");
+}
+
+export function navigation(): NavigationLike {
+	const nav = navigationOrNull();
+	if (!nav) throw navigationUnavailable();
 	return nav;
 }
 
@@ -112,33 +116,43 @@ function looksLikePath(name: string): boolean {
 
 export function navigateTo(name: string, params?: Record<string, unknown>): { route?: string } {
 	const expo = router();
-	if (expo && (looksLikePath(name) || !shared.options.navigationRef)) {
+	const expoRouterOwnsThisRoute = Boolean(expo) && (looksLikePath(name) || !shared.options.navigationRef);
+	if (expo && expoRouterOwnsThisRoute) {
 		expo.navigate(name);
 		return { route: currentRouteName() };
 	}
+
 	const nav = navigation();
 	const chain = chainToRoute(nav.getRootState() as RouteState | undefined, name);
-	if (chain && chain.length > 1) {
+
+	const routeIsNestedInAnotherNavigator = chain !== null && chain.length > 1;
+	if (routeIsNestedInAnotherNavigator) {
 		nav.navigate(chain[0]!, nestedParams(chain.slice(1), params));
 	} else {
 		nav.navigate(name, params);
 	}
+
 	return { route: nav.getCurrentRoute()?.name };
 }
 
 export function goBack(): { route?: string } {
 	const nav = navigationOrNull();
 	const expo = router();
+
 	if (nav) {
-		if (!nav.canGoBack()) throw new Error("Cannot go back from the current route");
+		const hasSomewhereToGoBackTo = nav.canGoBack();
+		if (!hasSomewhereToGoBackTo) throw new Error("Cannot go back from the current route");
 		nav.goBack();
 		return { route: nav.getCurrentRoute()?.name };
 	}
+
 	if (expo) {
-		if (!expo.canGoBack()) throw new Error("Cannot go back from the current route");
+		const hasSomewhereToGoBackTo = expo.canGoBack();
+		if (!hasSomewhereToGoBackTo) throw new Error("Cannot go back from the current route");
 		expo.back();
 		return { route: currentRouteName() };
 	}
+
 	throw new Error("No navigationRef or router registered");
 }
 
@@ -173,14 +187,10 @@ function focusedPath(state: RouteState | undefined): string[] {
 
 export function navigationSummary(): unknown {
 	const nav = navigationOrNull();
-	if (!nav) {
-		if (router())
-			throw new Error(
-				"A router is registered but no navigationRef; pass useNavigationContainerRef() to read route state",
-			);
-		throw new Error("No navigationRef registered; pass it to useAgentJet()");
-	}
+	if (!nav) throw navigationUnavailable();
+
 	const root = nav.getRootState() as RouteState | undefined;
+
 	return { current: nav.getCurrentRoute(), path: focusedPath(root), state: compactState(root) };
 }
 
@@ -191,6 +201,7 @@ export function appName(): string | undefined {
 function queryState() {
 	const client = shared.options.queryClient;
 	if (!client) return undefined;
+
 	return client
 		.getQueryCache()
 		.getAll()
@@ -228,7 +239,9 @@ export function readState(key?: string): Record<string, unknown> {
 		if (!getter) throw new Error(`Unknown state key "${key}"; known keys: ${[...all.keys()].join(", ") || "(none)"}`);
 		return { [key]: resolve(getter) };
 	}
+
 	const result: Record<string, unknown> = {};
 	for (const [name, getter] of all) result[name] = resolve(getter);
+
 	return result;
 }

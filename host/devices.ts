@@ -4,13 +4,18 @@ import type { Device, Platform } from "./device.js";
 import { ios } from "./ios.js";
 
 export async function deviceFor(app: AppConnection, want?: Platform): Promise<Device> {
-	const platform = want ?? app.connectionFor()?.device.platform ?? app.preferred ?? undefined;
+	const platform = want ?? app.preferred ?? app.connectionFor()?.device.platform;
 	if (platform === "android") {
 		setPixelRatio(app.connectionFor("android")?.device.pixelRatio ?? app.device?.pixelRatio);
 		return android;
 	}
 	if (platform === "ios") return ios;
-	if (await ios.name()) return ios;
-	if ((await hasAdb()) && (await android.name())) return android;
+
+	const iosSimulatorIsRunning = (await ios.name()) !== null;
+	if (iosSimulatorIsRunning) return ios;
+
+	const androidDeviceIsAttached = (await hasAdb()) && (await android.name()) !== null;
+	if (androidDeviceIsAttached) return android;
+
 	throw new Error("No app connected and no iOS Simulator or Android device found.");
 }

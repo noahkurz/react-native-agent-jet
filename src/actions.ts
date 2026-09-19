@@ -1,4 +1,4 @@
-import { describeNode, find, findOne, publicInstanceOf, type Fiber, type SemanticNode } from "./fiber";
+import { describeNode, find, findOne, publicInstanceOf, type Fiber, type SemanticNode } from "./tree";
 import type { Target, UINode } from "./protocol";
 
 function syntheticPressEvent() {
@@ -113,7 +113,9 @@ export async function scroll(params: {
 	const match = await findOne(params.target ?? { type: "ScrollView" }, false, params.index);
 	const scrollable = nearestScrollable(match);
 	const instance = scrollable.scrollInstance!;
+
 	if (params.toEnd) instance.scrollToEnd({ animated: false });
 	else instance.scrollTo({ x: params.x ?? 0, y: params.y ?? 0, animated: false });
+
 	return describeNode(scrollable);
 }

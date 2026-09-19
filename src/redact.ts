@@ -1,17 +1,7 @@
-/**
- * Best-effort scrubbing of secrets from captured logs and network traffic.
- *
- * This covers common shapes (sensitive-looking field names, JWTs, `Bearer` values) so that
- * routine debugging does not leak credentials. It is NOT a guarantee: it cannot know what is
- * sensitive in a given app, and anything unrecognised passes through. Callers are expected to
- * extend `keys`/`patterns` for their own data.
- */
 export type RedactOption =
 	| boolean
 	| {
-			/** Extra field names to redact, matched case- and separator-insensitively. Added to the defaults. */
 			keys?: string[];
-			/** Extra value shapes to redact anywhere they appear (e.g. /sk_live_[A-Za-z0-9]+/). */
 			patterns?: RegExp[];
 	  };
 
@@ -42,7 +32,6 @@ type Config = { enabled: boolean; keys: string[]; patterns: RegExp[] };
 
 const config: Config = { enabled: true, keys: DEFAULT_KEYS, patterns: [] };
 
-/** User patterns must be global so every occurrence is replaced, not just the first. */
 function globalize(pattern: RegExp): RegExp {
 	return pattern.flags.includes("g") ? pattern : new RegExp(pattern.source, `${pattern.flags}g`);
 }
@@ -67,7 +56,6 @@ function isSensitiveKey(key: string): boolean {
 	return config.keys.some((needle) => normalized.includes(needle));
 }
 
-/** Scrub secrets that appear in free text: JWTs and `Bearer <token>` style values. */
 export function redactText(text: string): string {
 	if (!config.enabled) return text;
 	let out = text.replace(JWT, "[redacted jwt]").replace(BEARER, (_m, scheme: string) => `${scheme} ${REDACTED}`);
@@ -89,35 +77,39 @@ function redactStructured(value: unknown, depth: number): unknown {
 	return value;
 }
 
-/** Redact a request/response body, keeping its shape and field names. */
 export function redactBody(text: string): string {
 	if (!config.enabled) return text;
 	const trimmed = text.trim();
-	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+	const looksLikeJson = trimmed.startsWith("{") || trimmed.startsWith("[");
+	if (looksLikeJson) {
 		try {
 			return JSON.stringify(redactStructured(JSON.parse(trimmed), 0));
 		} catch {}
 	}
+
 	return redactText(text).replace(/(^|[?&])([^=&\s]+)=([^&\s]+)/g, (match, prefix: string, key: string) =>
 		isSensitiveKey(key) ? `${prefix}${key}=${REDACTED}` : match,
 	);
 }
 
-/** Redact sensitive query-string values while leaving the path readable. */
 export function redactUrl(url: string): string {
 	if (!config.enabled) return url;
-	const split = url.indexOf("?");
-	if (split === -1) return redactText(url);
-	const path = url.slice(0, split);
+	const queryStart = url.indexOf("?");
+	const hasQueryString = queryStart !== -1;
+	if (!hasQueryString) return redactText(url);
+
+	const path = url.slice(0, queryStart);
 	const query = url
-		.slice(split + 1)
+		.slice(queryStart + 1)
 		.split("&")
 		.map((pair) => {
-			const eq = pair.indexOf("=");
-			if (eq === -1) return pair;
-			const key = pair.slice(0, eq);
+			const separator = pair.indexOf("=");
+			const isKeyValuePair = separator !== -1;
+			if (!isKeyValuePair) return pair;
+			const key = pair.slice(0, separator);
 			return isSensitiveKey(key) ? `${key}=${REDACTED}` : pair;
 		})
 		.join("&");
+
 	return redactText(`${path}?${query}`);
 }

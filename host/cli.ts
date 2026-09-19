@@ -5,12 +5,12 @@ import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { WebSocketServer } from "ws";
 import type { Hello } from "../src/protocol.js";
+import { DEFAULT_PORT } from "../src/constants.js";
+import { ENV, PACKAGE_NAME, PLAYBOOK_FILE, SERVER_KEY, SKILL_PATH } from "./constants.js";
 import { addCommand, PLAYBOOK, PLAYBOOK_MARKER, SETUP_PROMPT, SKILL, type PackageManager } from "./playbook.js";
 import { android, hasAdb } from "./android.js";
-import { CLIENTS, clientList, resolveClient, writeClientConfig, type ClientId } from "./clients.js";
+import { CLIENTS, clientList, resolveClient, tomlTablePattern, writeClientConfig, type ClientId } from "./clients.js";
 import { bootedName, hasAxe } from "./ios.js";
-
-const DEFAULT_PORT = 8765;
 
 const ok = (message: string) => console.log(`  ✓ ${message}`);
 const warn = (message: string) => console.log(`  ! ${message}`);
@@ -20,9 +20,13 @@ function parseArgs(argv: string[]): { command: string; flags: Map<string, string
 	const flags = new Map<string, string | true>();
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i]!;
-		if (!arg.startsWith("--")) continue;
+
+		const isFlag = arg.startsWith("--");
+		if (!isFlag) continue;
+
 		const next = rest[i + 1];
-		if (next && !next.startsWith("--")) {
+		const nextIsThisFlagsValue = next !== undefined && !next.startsWith("--");
+		if (nextIsThisFlagsValue) {
 			flags.set(arg.slice(2), next);
 			i++;
 		} else {
@@ -33,11 +37,12 @@ function parseArgs(argv: string[]): { command: string; flags: Map<string, string
 }
 
 function installedPackageDir(cwd: string): string | null {
-	const local = join(cwd, "node_modules", "react-native-agent-jet");
-	if (existsSync(join(local, "package.json"))) return local;
+	const local = join(cwd, "node_modules", PACKAGE_NAME);
+	const isInstalledLocally = existsSync(join(local, "package.json"));
+	if (isInstalledLocally) return local;
 	try {
 		const require = createRequire(join(cwd, "package.json"));
-		return dirname(require.resolve("react-native-agent-jet/package.json"));
+		return dirname(require.resolve(`${PACKAGE_NAME}/package.json`));
 	} catch {
 		return null;
 	}
@@ -58,25 +63,32 @@ function rootFileHint(cwd: string): string {
 }
 
 function detectPackageManager(cwd: string): PackageManager {
-	if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb"))) return "bun";
-	if (existsSync(join(cwd, "pnpm-lock.yaml"))) return "pnpm";
-	if (existsSync(join(cwd, "yarn.lock"))) return "yarn";
+	const hasLockfile = (name: string) => existsSync(join(cwd, name));
+	if (hasLockfile("bun.lock") || hasLockfile("bun.lockb")) return "bun";
+	if (hasLockfile("pnpm-lock.yaml")) return "pnpm";
+	if (hasLockfile("yarn.lock")) return "yarn";
 	return "npm";
 }
 
 async function writeSkill(cwd: string): Promise<"written" | "present"> {
-	const path = join(cwd, ".claude", "skills", "agent-jet", "SKILL.md");
-	if (existsSync(path)) return "present";
+	const path = join(cwd, ...SKILL_PATH);
+	const skillAlreadyWritten = existsSync(path);
+	if (skillAlreadyWritten) return "present";
+
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, SKILL);
 	return "written";
 }
 
 async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "missing"> {
-	const path = join(cwd, "CLAUDE.md");
-	if (!existsSync(path)) return "missing";
+	const path = join(cwd, PLAYBOOK_FILE);
+	const projectHasAPlaybook = existsSync(path);
+	if (!projectHasAPlaybook) return "missing";
+
 	const current = await readFile(path, "utf8");
-	if (current.includes(PLAYBOOK_MARKER)) return "present";
+	const playbookAlreadyAppended = current.includes(PLAYBOOK_MARKER);
+	if (playbookAlreadyAppended) return "present";
+
 	await writeFile(path, `${current.trimEnd()}\n\n${PLAYBOOK}`);
 	return "appended";
 }
@@ -84,15 +96,20 @@ async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "mi
 async function reportDevices() {
 	const simulator = await bootedName().catch(() => null);
 	if (simulator) ok(`iOS Simulator booted: ${simulator}`);
-	if (await hasAxe()) ok("AXe installed (real keystrokes, taps and swipes on iOS)");
+
+	const axeInstalled = await hasAxe();
+	if (axeInstalled) ok("AXe installed (real keystrokes, taps and swipes on iOS)");
 	else
 		warn("AXe not installed; optional, enables real keystrokes and touches on iOS: brew install cameroncooke/axe/axe");
+
 	const adb = await hasAdb();
 	const device = adb ? await android.name() : null;
 	if (device) ok(`Android device: ${device}`);
 	else if (adb) ok("adb installed (real input on Android); no device connected right now");
 	else warn("adb not on PATH; optional, needed for Android screenshots and input");
-	if (!simulator && !device) warn("no iOS Simulator or Android device is running; start one before testing");
+
+	const nothingIsRunning = !simulator && !device;
+	if (nothingIsRunning) warn("no iOS Simulator or Android device is running; start one before testing");
 }
 
 function resolveClients(flag: string | true | undefined): ClientId[] | null {
@@ -113,9 +130,11 @@ function resolveClients(flag: string | true | undefined): ClientId[] | null {
 
 async function init(flags: Map<string, string | true>) {
 	const cwd = process.cwd();
-	if (!existsSync(join(cwd, "package.json"))) {
+	const isAProjectRoot = existsSync(join(cwd, "package.json"));
+	if (!isAProjectRoot) {
 		throw new Error("No package.json here. Run this from your app's root directory.");
 	}
+
 	const appName = ((await readJson(join(cwd, "package.json"))).name as string | undefined) ?? "my-app";
 	console.log("\nreact-native-agent-jet init\n");
 
@@ -131,6 +150,7 @@ async function init(flags: Map<string, string | true>) {
 	if (clients === null) {
 		throw new Error(`Unknown --client. Choose from: ${clientList()}, or "all".`);
 	}
+
 	for (const id of clients) {
 		const r = await writeClientConfig(id, cwd, packageDir);
 		ok(
@@ -141,24 +161,22 @@ async function init(flags: Map<string, string | true>) {
 	await reportDevices();
 
 	if (flags.get("skill") !== "false") {
+		const skillPath = SKILL_PATH.join("/");
 		const skill = await writeSkill(cwd);
-		ok(
-			skill === "written"
-				? "wrote .claude/skills/agent-jet/SKILL.md"
-				: ".claude/skills/agent-jet/SKILL.md already exists",
-		);
+		ok(skill === "written" ? `wrote ${skillPath}` : `${skillPath} already exists`);
 	}
+
 	if (flags.get("playbook") === "true") {
 		const playbook = await appendPlaybook(cwd);
-		if (playbook === "appended") ok("added the agent playbook to CLAUDE.md");
-		else if (playbook === "present") ok("CLAUDE.md already has the agent playbook");
-		else warn("no CLAUDE.md found to append the playbook to");
+		if (playbook === "appended") ok(`added the agent playbook to ${PLAYBOOK_FILE}`);
+		else if (playbook === "present") ok(`${PLAYBOOK_FILE} already has the agent playbook`);
+		else warn(`no ${PLAYBOOK_FILE} found to append the playbook to`);
 	}
 
 	console.log(`
 Next, call the hook once in ${rootFileHint(cwd)}:
 
-  import { useAgentJet } from "react-native-agent-jet";
+  import { useAgentJet } from "${PACKAGE_NAME}";
 
   useAgentJet({ navigationRef, queryClient, appName: "${appName}" });
 
@@ -171,13 +189,17 @@ async function registeredClients(cwd: string): Promise<string[]> {
 	for (const id of Object.keys(CLIENTS) as ClientId[]) {
 		const spec = CLIENTS[id];
 		const path = spec.file(cwd);
-		if (!existsSync(path)) continue;
+
+		const clientHasAConfigHere = existsSync(path);
+		if (!clientHasAConfigHere) continue;
+
 		try {
 			const text = await readFile(path, "utf8");
-			const hit = spec.format === "toml" ? /\[mcp_servers\.jet\]/.test(text) : text.includes('"jet"');
+			const hit = spec.format === "toml" ? tomlTablePattern().test(text) : text.includes(`"${SERVER_KEY}"`);
 			if (hit) found.push(spec.label);
 		} catch {}
 	}
+
 	return found;
 }
 
@@ -196,7 +218,7 @@ async function doctor() {
 
 	await reportDevices();
 
-	const port = Number(process.env.AGENT_JET_PORT ?? DEFAULT_PORT);
+	const port = Number(process.env[ENV.port] ?? DEFAULT_PORT);
 	await new Promise<void>((resolve) => {
 		const server = new WebSocketServer({ port });
 		const finish = () => {

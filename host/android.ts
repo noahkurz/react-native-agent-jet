@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import type { Button, Device, Point } from "./device.js";
 import { screenshotDir } from "./ios.js";
-import { downscaleIfPossible, pngWidth } from "./image.js";
+import { sizeScreenshot, type Screenshot, type SizeRequest } from "./image.js";
 
 const exec = promisify(execFile);
 
@@ -26,14 +26,23 @@ export async function hasAdb(): Promise<boolean> {
 	return adbChecked;
 }
 
-export async function serial(): Promise<string> {
+async function serial(): Promise<string> {
 	if (process.env.ANDROID_SERIAL) return process.env.ANDROID_SERIAL;
-	if (!(await hasAdb()))
+
+	const adbIsInstalled = await hasAdb();
+	if (!adbIsInstalled) {
 		throw new Error("adb is not on PATH. Install Android platform-tools or add $ANDROID_HOME/platform-tools to PATH.");
+	}
+
 	const lines = (await run("adb", ["devices"])).split("\n").slice(1);
 	const online = lines.map((line) => line.trim().split(/\s+/)).find((parts) => parts[1] === "device");
-	if (!online?.[0]) throw new Error("No Android device or emulator is connected. Start one, then check `adb devices`.");
-	return online[0];
+
+	const firstOnlineSerial = online?.[0];
+	if (!firstOnlineSerial) {
+		throw new Error("No Android device or emulator is connected. Start one, then check `adb devices`.");
+	}
+
+	return firstOnlineSerial;
 }
 
 async function adb(args: string[]): Promise<string> {
@@ -78,17 +87,14 @@ async function toPixels(point: Point): Promise<Point> {
 	return { x: Math.round(point.x * ratio), y: Math.round(point.y * ratio) };
 }
 
-export async function screenshot(targetWidth: number | null): Promise<{ path: string; width: number }> {
+export async function screenshot(request: SizeRequest): Promise<Screenshot> {
 	const path = join(await screenshotDir(), `android-${Date.now()}.png`);
 	const { stdout } = await exec("adb", ["-s", await serial(), "exec-out", "screencap", "-p"], {
 		encoding: "buffer",
 		maxBuffer: 64 * 1024 * 1024,
 	});
 	await writeFile(path, stdout);
-	const native = await pngWidth(path);
-	const target = targetWidth ?? Math.round(native / (await pixelRatio()));
-	const width = await downscaleIfPossible(path, native, target);
-	return { path, width };
+	return sizeScreenshot(path, { ...request, deviceScale: await pixelRatio() });
 }
 
 export async function tap(point: Point): Promise<void> {
@@ -96,16 +102,21 @@ export async function tap(point: Point): Promise<void> {
 	await shell(`input tap ${px.x} ${px.y}`);
 }
 
+const NON_ASCII = /[^\x20-\x7e]/;
+
 export async function typeText(text: string): Promise<void> {
-	if (/[^\x20-\x7e]/.test(text)) {
+	const containsCharactersAdbCannotType = NON_ASCII.test(text);
+	if (containsCharactersAdbCannotType) {
 		throw new Error("adb can only type ASCII text; use set_text for other characters");
 	}
+
 	await shell(`input text ${quote(text.replace(/ /g, "%s"))}`);
 }
 
 export async function swipe(from: Point, to: Point, durationSeconds: number): Promise<void> {
 	const a = await toPixels(from);
 	const b = await toPixels(to);
+
 	await shell(`input swipe ${a.x} ${a.y} ${b.x} ${b.y} ${Math.round(durationSeconds * 1000)}`);
 }
 
@@ -118,6 +129,7 @@ export async function pressKey(key: string | number): Promise<void> {
 			`Unknown key "${key}"; use one of ${Object.keys(KEYCODES).join(", ")} or an Android keycode number`,
 		);
 	}
+
 	await shell(`input keyevent ${code}`);
 }
 

@@ -4,14 +4,25 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 
-/** Read a PNG's pixel width from its IHDR header — no external tools, works on any OS. */
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const CHUNK_LENGTH_BYTES = 4;
+const IHDR_DATA_LENGTH = 13;
+const IHDR_MARKER_START = PNG_SIGNATURE.length + CHUNK_LENGTH_BYTES;
+const IHDR_MARKER_END = IHDR_MARKER_START + "IHDR".length;
+const IHDR_WIDTH_OFFSET = IHDR_MARKER_END;
+const IHDR_HEADER_LENGTH = IHDR_WIDTH_OFFSET + 4 + 4;
+
 export async function pngWidth(path: string): Promise<number> {
 	const buffer = await readFile(path);
-	// PNG signature (8 bytes) + IHDR length (4) + "IHDR" (4) → width is the next 4 bytes, big-endian.
-	if (buffer.length < 24 || buffer.toString("ascii", 12, 16) !== "IHDR") {
-		throw new Error("Not a PNG or unexpected header");
-	}
-	return buffer.readUInt32BE(16);
+	const startsWithSignature = buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+	const marker = buffer.toString("ascii", IHDR_MARKER_START, IHDR_MARKER_END);
+	const isLongEnough = buffer.length >= IHDR_HEADER_LENGTH;
+	const declaresAnIhdrChunk =
+		isLongEnough && buffer.readUInt32BE(PNG_SIGNATURE.length) === IHDR_DATA_LENGTH && marker === "IHDR";
+	const isPng = startsWithSignature && declaresAnIhdrChunk;
+	if (!isPng) throw new Error("Not a PNG or unexpected header");
+
+	return buffer.readUInt32BE(IHDR_WIDTH_OFFSET);
 }
 
 let sipsChecked: boolean | null = null;
@@ -27,15 +38,43 @@ async function hasSips(): Promise<boolean> {
 	return sipsChecked;
 }
 
-/**
- * Downscale a PNG to `targetWidth` when a resizer is available (sips, macOS).
- * Elsewhere (Windows/Linux) the native image is kept — callers report the real width.
- * Returns the resulting pixel width.
- */
-export async function downscaleIfPossible(path: string, nativeWidth: number, targetWidth: number): Promise<number> {
-	targetWidth = Math.round(targetWidth);
-	if (targetWidth >= nativeWidth) return nativeWidth;
-	if (!(await hasSips())) return nativeWidth;
-	await exec("sips", ["--resampleWidth", String(targetWidth), path]);
-	return targetWidth;
+async function downscaleIfPossible(path: string, nativeWidth: number, requestedWidth: number): Promise<number> {
+	const targetWidth = Math.round(requestedWidth);
+	const wouldUpscale = targetWidth >= nativeWidth;
+	if (wouldUpscale) return nativeWidth;
+	const canResize = await hasSips();
+	if (!canResize) return nativeWidth;
+
+	try {
+		await exec("sips", ["--resampleWidth", String(targetWidth), path]);
+		return targetWidth;
+	} catch {
+		return nativeWidth;
+	}
+}
+
+export type Screenshot = {
+	path: string;
+	width: number;
+	inPoints: boolean;
+};
+
+export type SizeRequest = {
+	preferredPixelWidth?: number | null;
+	pointWidth?: number | null;
+	deviceScale?: number;
+};
+
+export async function sizeScreenshot(path: string, request: SizeRequest = {}): Promise<Screenshot> {
+	const native = await pngWidth(path);
+
+	const fromScale = request.deviceScale ? native / request.deviceScale : null;
+	const pointWidth = request.pointWidth ?? fromScale;
+	const pointWidthInPixels = pointWidth === null ? null : Math.round(pointWidth);
+	const requested = request.preferredPixelWidth ?? pointWidthInPixels;
+	if (requested === null) return { path, width: native, inPoints: false };
+
+	const width = await downscaleIfPossible(path, native, requested);
+
+	return { path, width, inPoints: pointWidthInPixels !== null && width === pointWidthInPixels };
 }

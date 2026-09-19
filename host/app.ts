@@ -1,10 +1,22 @@
 import { WebSocketServer, type WebSocket } from "ws";
-import type { BridgeMethods, DeviceInfo, Hello, MethodName, Response } from "../src/protocol.js";
+import {
+	HELLO,
+	type BridgeMethods,
+	type DeviceInfo,
+	type Hello,
+	type MethodName,
+	type Response,
+} from "../src/protocol.js";
 import type { Platform } from "./device.js";
-
-const REQUEST_TIMEOUT_MS = 15000;
-const CONNECT_WAIT_MS = 6000;
-const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
+import {
+	CLOSE_TIMEOUT_MS,
+	CONNECT_WAIT_MS,
+	SHUTDOWN_MESSAGE,
+	ENV,
+	LOOPBACK_HOST,
+	LOOPBACK_HOSTS,
+	REQUEST_TIMEOUT_MS,
+} from "./constants.js";
 
 type Pending = {
 	socket: WebSocket;
@@ -15,34 +27,81 @@ type Pending = {
 
 type Connection = { socket: WebSocket; device: DeviceInfo; version: string; connectedAt: number };
 
+type Waiter = { wake: () => void; cancel: (reason: Error) => void };
+
+function safeToIgnore<T>(promise: Promise<T>): Promise<T> {
+	promise.catch(() => {});
+	return promise;
+}
+
 export class AppConnection {
 	private connections: Connection[] = [];
 	private pending = new Map<number, Pending>();
 	private nextId = 1;
-	private waiters: Array<() => void> = [];
-	preferred: Platform | null = (process.env.AGENT_JET_PLATFORM as Platform | undefined) ?? null;
+	private waiters: Waiter[] = [];
+	private closed = false;
+	preferred: Platform | null = (process.env[ENV.platform] as Platform | undefined) ?? null;
 
-	constructor(readonly port: number) {
-		const host = process.env.AGENT_JET_HOST ?? "127.0.0.1";
-		const server = new WebSocketServer({ port, host });
-		if (!LOOPBACK.has(host)) {
+	private readonly server: WebSocketServer;
+	private readonly requestedPort: number;
+
+	readonly listening: Promise<void>;
+
+	constructor(requestedPort: number) {
+		this.requestedPort = requestedPort;
+
+		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
+		const server = new WebSocketServer({ port: requestedPort, host });
+		this.server = server;
+		this.listening = safeToIgnore(
+			new Promise<void>((resolve, reject) => {
+				const failStartup = (error: Error) => reject(error);
+				server.once("error", failStartup);
+				server.once("listening", () => {
+					server.off("error", failStartup);
+					resolve();
+				});
+			}),
+		);
+
+		const reachableBeyondLoopback = !LOOPBACK_HOSTS.has(host);
+		if (reachableBeyondLoopback) {
 			process.stderr.write(
 				`[agent-jet-mcp] WARNING: listening on ${host}, which is reachable from your network. ` +
-					`There is no authentication, so anyone who can reach port ${port} can impersonate your app. ` +
+					`There is no authentication, so anyone who can reach port ${requestedPort} can impersonate your app. ` +
 					`Only do this on a trusted network.\n`,
 			);
 		}
+
 		server.on("connection", (socket) => this.accept(socket));
 		server.on("error", (error) => {
 			process.stderr.write(`[agent-jet-mcp] websocket server error: ${error.message}\n`);
 		});
 	}
 
+	close(): Promise<void> {
+		this.closed = true;
+		for (const waiter of [...this.waiters]) waiter.cancel(new Error(SHUTDOWN_MESSAGE));
+
+		this.connections.splice(0);
+		for (const client of this.server.clients) client.terminate();
+
+		return new Promise((resolve) => {
+			const stopWaitingForStragglers = setTimeout(resolve, CLOSE_TIMEOUT_MS);
+			this.server.close(() => {
+				clearTimeout(stopWaitingForStragglers);
+				resolve();
+			});
+		});
+	}
+
+	get port(): number {
+		const address = this.server.address();
+		return typeof address === "object" && address !== null ? address.port : this.requestedPort;
+	}
+
 	get active(): Connection | null {
-		if (this.preferred) {
-			const match = this.connections.find((connection) => connection.device.platform === this.preferred);
-			if (match) return match;
-		}
+		if (this.preferred) return this.connectionFor(this.preferred);
 		return this.connections[this.connections.length - 1] ?? null;
 	}
 
@@ -70,8 +129,10 @@ export class AppConnection {
 
 	private accept(socket: WebSocket) {
 		socket.on("message", (data) => this.receive(socket, String(data)));
+
 		socket.on("close", () => {
 			this.connections = this.connections.filter((connection) => connection.socket !== socket);
+
 			for (const [id, entry] of this.pending) {
 				if (entry.socket !== socket) continue;
 				clearTimeout(entry.timer);
@@ -88,20 +149,25 @@ export class AppConnection {
 		} catch {
 			return;
 		}
+
 		if ("type" in message) {
-			if (message.type === "hello") {
+			if (message.type === HELLO) {
 				this.connections = this.connections.filter(
 					(connection) => connection.socket !== socket && connection.device.platform !== message.device.platform,
 				);
 				this.connections.push({ socket, device: message.device, version: message.version, connectedAt: Date.now() });
-				for (const wake of this.waiters.splice(0)) wake();
+				const stillWaiting = [...this.waiters];
+				for (const waiter of stillWaiting) waiter.wake();
 			}
 			return;
 		}
+
 		const entry = this.pending.get(message.id);
 		if (!entry) return;
+
 		this.pending.delete(message.id);
 		clearTimeout(entry.timer);
+
 		if (message.ok) entry.resolve(message.result);
 		else entry.reject(new Error(message.error));
 	}
@@ -119,26 +185,42 @@ export class AppConnection {
 	}
 
 	private waitForConnection(platform?: Platform, timeoutMs = CONNECT_WAIT_MS): Promise<Connection> {
-		const existing = this.connectionFor(platform);
+		if (this.closed) return Promise.reject(new Error(SHUTDOWN_MESSAGE));
+
+		const wanted = platform ?? this.preferred ?? undefined;
+		const existing = this.connectionFor(wanted);
 		if (existing) return Promise.resolve(existing);
+
 		return new Promise((resolve, reject) => {
+			const stopWaiting = () => {
+				clearTimeout(timer);
+				this.waiters = this.waiters.filter((candidate) => candidate !== waiter);
+			};
+
 			const timer = setTimeout(() => {
-				this.waiters = this.waiters.filter((waiter) => waiter !== wake);
-				const want = platform ? `${platform} app` : "app";
+				stopWaiting();
+				const want = wanted ? `${wanted} app` : "app";
 				reject(
 					new Error(
 						`No ${want} connected on ws://localhost:${this.port}. Is it running in a dev build with useAgentJet() called?`,
 					),
 				);
 			}, timeoutMs);
-			const wake = () => {
-				const match = this.connectionFor(platform);
-				if (!match) return;
-				clearTimeout(timer);
-				this.waiters = this.waiters.filter((waiter) => waiter !== wake);
-				resolve(match);
+
+			const waiter: Waiter = {
+				wake: () => {
+					const match = this.connectionFor(wanted);
+					if (!match) return;
+					stopWaiting();
+					resolve(match);
+				},
+				cancel: (reason) => {
+					stopWaiting();
+					reject(reason);
+				},
 			};
-			this.waiters.push(wake);
+
+			this.waiters.push(waiter);
 		});
 	}
 

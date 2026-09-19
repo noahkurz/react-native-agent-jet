@@ -1,16 +1,17 @@
 import { Platform } from "react-native";
+import { ANDROID_EMULATOR_HOST, DEFAULT_PORT, LOCALHOST } from "./constants";
 import { originalConsole } from "./capture";
 import { deviceInfo, dispatch } from "./dispatch";
-import type { Hello, Request, Response } from "./protocol";
+import { HELLO, type Hello, type Request, type Response } from "./protocol";
 import { version } from "../package.json";
 
-export const DEFAULT_PORT = 8765;
-export const VERSION = version;
+export { DEFAULT_PORT };
+const VERSION = version;
 
 const RECONNECT_MS = 250;
 
 export function defaultUrl(): string {
-	const host = Platform.OS === "android" ? "10.0.2.2" : "localhost";
+	const host = Platform.OS === "android" ? ANDROID_EMULATOR_HOST : LOCALHOST;
 	return `ws://${host}:${DEFAULT_PORT}`;
 }
 
@@ -46,6 +47,7 @@ async function handle(socket: WebSocket, raw: string) {
 	} catch {
 		return;
 	}
+
 	let response: Response;
 	try {
 		const result = await shared.dispatch(request.method, request.params);
@@ -53,11 +55,15 @@ async function handle(socket: WebSocket, raw: string) {
 	} catch (error) {
 		response = { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
-	if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(response));
+
+	const socketIsStillOpen = socket.readyState === WebSocket.OPEN;
+	if (socketIsStillOpen) socket.send(JSON.stringify(response));
 }
 
 export function connect(url: string) {
-	if (shared.stopped || shared.socket) return;
+	const alreadyConnectedOrShutDown = shared.stopped || Boolean(shared.socket);
+	if (alreadyConnectedOrShutDown) return;
+
 	let ws: WebSocket;
 	try {
 		ws = new WebSocket(url);
@@ -65,24 +71,23 @@ export function connect(url: string) {
 		setTimeout(() => connect(url), RECONNECT_MS);
 		return;
 	}
+
 	shared.socket = ws;
+
 	ws.onopen = () => {
-		const hello: Hello = { type: "hello", device: deviceInfo(), version: VERSION };
+		const hello: Hello = { type: HELLO, device: deviceInfo(), version: VERSION };
 		ws.send(JSON.stringify(hello));
 		log(`connected to ${url}`);
 	};
+
 	ws.onmessage = (event) => {
 		void handle(ws, String(event.data));
 	};
+
 	ws.onerror = () => {};
+
 	ws.onclose = () => {
 		if (shared.socket === ws) shared.socket = null;
 		if (!shared.stopped) setTimeout(() => connect(url), RECONNECT_MS);
 	};
-}
-
-export function disconnect() {
-	shared.stopped = true;
-	shared.socket?.close();
-	shared.socket = null;
 }

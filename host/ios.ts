@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import type { Button, Device, Point } from "./device.js";
-import { downscaleIfPossible, pngWidth } from "./image.js";
+import { sizeScreenshot, type Screenshot, type SizeRequest } from "./image.js";
+import { PACKAGE_NAME } from "./constants.js";
 
 const exec = promisify(execFile);
 
@@ -14,7 +15,7 @@ async function run(command: string, args: string[]): Promise<string> {
 	return stdout;
 }
 
-export async function bootedUdid(): Promise<string> {
+async function bootedUdid(): Promise<string> {
 	const raw = await run("xcrun", ["simctl", "list", "devices", "booted", "-j"]);
 	const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ udid: string; state: string; name: string }>> };
 	for (const devices of Object.values(parsed.devices)) {
@@ -25,12 +26,14 @@ export async function bootedUdid(): Promise<string> {
 }
 
 export async function bootedName(): Promise<string | null> {
-	const raw = await run("xcrun", ["simctl", "list", "devices", "booted", "-j"]);
-	const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ state: string; name: string }>> };
-	for (const [runtime, devices] of Object.entries(parsed.devices)) {
-		const booted = devices.find((device) => device.state === "Booted");
-		if (booted) return `${booted.name} (${runtime.split(".").pop()})`;
-	}
+	try {
+		const raw = await run("xcrun", ["simctl", "list", "devices", "booted", "-j"]);
+		const parsed = JSON.parse(raw) as { devices: Record<string, Array<{ state: string; name: string }>> };
+		for (const [runtime, devices] of Object.entries(parsed.devices)) {
+			const booted = devices.find((device) => device.state === "Booted");
+			if (booted) return `${booted.name} (${runtime.split(".").pop()})`;
+		}
+	} catch {}
 	return null;
 }
 
@@ -48,7 +51,8 @@ export async function hasAxe(): Promise<boolean> {
 }
 
 async function axe(args: string[]): Promise<string> {
-	if (!(await hasAxe())) {
+	const axeIsInstalled = await hasAxe();
+	if (!axeIsInstalled) {
 		throw new Error(
 			"AXe is not installed. Install with `brew install cameroncooke/axe/axe` to enable real touches and typing.",
 		);
@@ -57,18 +61,15 @@ async function axe(args: string[]): Promise<string> {
 }
 
 export async function screenshotDir(): Promise<string> {
-	const dir = join(tmpdir(), "react-native-agent-jet");
+	const dir = join(tmpdir(), PACKAGE_NAME);
 	await mkdir(dir, { recursive: true });
 	return dir;
 }
 
-export async function screenshot(targetWidth: number | null): Promise<{ path: string; width: number }> {
+export async function screenshot(request: SizeRequest): Promise<Screenshot> {
 	const path = join(await screenshotDir(), `screen-${Date.now()}.png`);
 	await run("xcrun", ["simctl", "io", await bootedUdid(), "screenshot", path]);
-	const native = await pngWidth(path);
-	const target = targetWidth ?? Math.round(native / (native >= 1000 ? 3 : 2));
-	const width = await downscaleIfPossible(path, native, target);
-	return { path, width };
+	return sizeScreenshot(path, request);
 }
 
 export async function tap(point: Point): Promise<void> {

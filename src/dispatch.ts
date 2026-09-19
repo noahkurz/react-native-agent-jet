@@ -1,7 +1,7 @@
 import { DevSettings, Dimensions, PixelRatio, Platform } from "react-native";
 import { focus, press, scroll, setText } from "./actions";
 import { clearCapture, readLogs, readNetwork } from "./capture";
-import { describeNode, find, inspect, tree } from "./fiber";
+import { describeNode, find, tree } from "./tree";
 import { appName, goBack, navigateTo, navigationSummary, readState } from "./handles";
 import type { BridgeMethods, DeviceInfo, MethodName } from "./protocol";
 
@@ -45,7 +45,6 @@ const handlers: Handlers = {
 		clearCapture();
 		return { ok: true };
 	},
-	inspect: ({ target }) => inspect(target),
 	reload: () => {
 		setTimeout(() => DevSettings.reload(), 50);
 		return { ok: true };
@@ -53,7 +52,8 @@ const handlers: Handlers = {
 };
 
 export async function dispatch(method: string, params: unknown): Promise<unknown> {
-	if (!Object.hasOwn(handlers, method)) throw new Error(`Unknown method "${method}"`);
+	const isKnownMethod = Object.hasOwn(handlers, method);
+	if (!isKnownMethod) throw new Error(`Unknown method "${method}"`);
 	const handler = handlers[method as MethodName] as (params: unknown) => unknown;
 	return handler(params ?? {});
 }

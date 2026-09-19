@@ -4,7 +4,8 @@ import { setOptions, type AgentJetOptions } from "./handles";
 
 export function startAgentJet(options: AgentJetOptions = {}): void {
 	setOptions(options);
-	if (!markStarted()) return;
+	const isFirstStart = markStarted();
+	if (!isFirstStart) return;
 	installCapture();
 	connect(options.url ?? defaultUrl());
 }

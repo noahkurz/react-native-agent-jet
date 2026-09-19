@@ -89,7 +89,6 @@ export type BridgeMethods = {
 	};
 	network: { params: { since?: number }; result: NetworkEntry[] };
 	clear: { params: Record<string, never>; result: { ok: true } };
-	inspect: { params: { target: Target }; result: unknown };
 	reload: { params: Record<string, never>; result: { ok: true } };
 };
 
@@ -103,4 +102,6 @@ export type Request<M extends MethodName = MethodName> = {
 
 export type Response = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string };
 
-export type Hello = { type: "hello"; device: DeviceInfo; version: string };
+export const HELLO = "hello";
+
+export type Hello = { type: typeof HELLO; device: DeviceInfo; version: string };

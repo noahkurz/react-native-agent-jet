@@ -39,13 +39,18 @@ function formatArg(arg: unknown): string {
 
 function pushLog(entry: Omit<LogEntry, "seq" | "at">) {
 	logs.push({ seq: ++shared.seq, at: Date.now(), ...entry, message: redactText(entry.message) });
-	if (logs.length > LOG_LIMIT) logs.splice(0, logs.length - LOG_LIMIT);
+
+	const logsOverLimit = logs.length - LOG_LIMIT;
+	if (logsOverLimit > 0) logs.splice(0, logsOverLimit);
 }
 
 function pushNetwork(entry: Omit<NetworkEntry, "seq" | "at">): NetworkEntry {
 	const full = { seq: ++shared.seq, at: Date.now(), ...entry, url: redactUrl(entry.url) };
 	network.push(full);
-	if (network.length > NETWORK_LIMIT) network.splice(0, network.length - NETWORK_LIMIT);
+
+	const entriesOverLimit = network.length - NETWORK_LIMIT;
+	if (entriesOverLimit > 0) network.splice(0, entriesOverLimit);
+
 	return full;
 }
 
@@ -53,7 +58,9 @@ function truncate(value: unknown): string | undefined {
 	if (value === undefined || value === null) return undefined;
 	const raw = typeof value === "string" ? value : formatArg(value);
 	const text = redactBody(raw);
-	return text.length > BODY_LIMIT ? `${text.slice(0, BODY_LIMIT)}…` : text;
+
+	const exceedsBodyLimit = text.length > BODY_LIMIT;
+	return exceedsBodyLimit ? `${text.slice(0, BODY_LIMIT)}…` : text;
 }
 
 type ErrorUtilsLike = {
@@ -70,6 +77,7 @@ function installConsoleCapture() {
 			original(...args);
 		};
 	}
+
 	const errorUtils = (globalThis as { ErrorUtils?: ErrorUtilsLike }).ErrorUtils;
 	if (errorUtils) {
 		const previous = errorUtils.getGlobalHandler();
@@ -88,26 +96,32 @@ function installNetworkCapture() {
 	const proto = XMLHttpRequest.prototype;
 	const open = proto.open;
 	const send = proto.send;
+
 	proto.open = function (this: TrackedXhr, method: string, url: string | URL, ...rest: unknown[]) {
 		this.__agentJet = { method, url: String(url), startedAt: 0 };
 		return (open as unknown as (...args: unknown[]) => void).apply(this, [method, url, ...rest]);
 	} as typeof proto.open;
+
 	proto.send = function (this: TrackedXhr, body?: Parameters<XMLHttpRequest["send"]>[0]) {
 		const tracked = insideFetch > 0 ? undefined : this.__agentJet;
 		if (tracked) {
 			tracked.startedAt = Date.now();
 			tracked.entry = pushNetwork({ method: tracked.method, url: tracked.url, requestBody: truncate(body) });
+
 			this.addEventListener("loadend", () => {
 				const entry = tracked.entry!;
 				entry.status = this.status;
 				entry.durationMs = Date.now() - tracked.startedAt;
-				if (this.status === 0) entry.error = "network error or aborted";
+
+				const requestNeverCompleted = this.status === 0;
+				if (requestNeverCompleted) entry.error = "network error or aborted";
 				try {
-					if (this.responseType === "" || this.responseType === "text")
-						entry.responseBody = truncate(this.responseText);
+					const responseIsReadableAsText = this.responseType === "" || this.responseType === "text";
+					if (responseIsReadableAsText) entry.responseBody = truncate(this.responseText);
 				} catch {}
 			});
 		}
+
 		return send.call(this, body);
 	};
 }
@@ -115,6 +129,7 @@ function installNetworkCapture() {
 function installFetchCapture() {
 	const original = globalThis.fetch;
 	if (typeof original !== "function") return;
+
 	globalThis.fetch = async function (
 		this: unknown,
 		input: Parameters<typeof fetch>[0],
@@ -126,8 +141,10 @@ function installFetchCapture() {
 			"GET"
 		).toUpperCase();
 		const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+
 		const entry = pushNetwork({ method, url, requestBody: truncate(init?.body ?? undefined) });
 		const startedAt = Date.now();
+
 		insideFetch++;
 		let response: Response;
 		try {
@@ -139,11 +156,13 @@ function installFetchCapture() {
 		} finally {
 			insideFetch--;
 		}
+
 		entry.status = response.status;
 		entry.durationMs = Date.now() - startedAt;
 		try {
 			entry.responseBody = truncate(await response.clone().text());
 		} catch {}
+
 		return response;
 	} as typeof fetch;
 }
@@ -151,6 +170,7 @@ function installFetchCapture() {
 export function installCapture() {
 	if (shared.installed) return;
 	shared.installed = true;
+
 	installConsoleCapture();
 	installNetworkCapture();
 	installFetchCapture();

@@ -211,14 +211,14 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 
 **See the screen**
 
-| Tool                | What it does                                                                                                                                                                               |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `format:"json"` to parse |
-| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                              |
-| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                     |
-| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                            |
-| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                          |
-| `screenshot`        | A PNG (1px = 1pt / dp), for when you need to _see_                                                                                                                                         |
+| Tool                | What it does                                                                                                                                                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse |
+| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                               |
+| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                      |
+| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                             |
+| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                           |
+| `screenshot`        | A PNG, for when you need to _see_. Usually scaled so 1px = 1pt (dp), but it falls back to native pixels when the scale is unknown or no resizer is available. **The reply states which**, so read it before using coordinates for taps      |
 
 **Act**
 
@@ -356,6 +356,7 @@ iOS itself is macOS-only because the iOS Simulator is.
 ```bash
 bun install
 bun run typecheck
+bun test          # 145 tests, no device needed
 bun run build     # builds the host (MCP server + CLI) into dist/
 ```
 
