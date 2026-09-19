@@ -90,3 +90,27 @@ describe("diffTrees", () => {
 		expect(diffTrees(before, moved).changed).toHaveLength(0);
 	});
 });
+
+describe("diffing a filtered tree", () => {
+	const withCounter = (value: string): UINode[] => [
+		{
+			id: 1,
+			type: "View",
+			children: [
+				{ id: 2, type: "Text", text: value, children: [] },
+				{ id: 3, type: "Pressable", pressable: true, children: [] },
+			],
+		},
+	];
+
+	test("a change to a non-interactive node is invisible under the interactive filter", () => {
+		const only = { interactive: true };
+		const diff = diffTrees(filterTree(withCounter("1"), only), filterTree(withCounter("2"), only));
+		expect(formatDiff(diff)).toBe("(no changes)");
+	});
+
+	test("the same change is reported when nothing is filtered out", () => {
+		const diff = diffTrees(withCounter("1"), withCounter("2"));
+		expect(formatDiff(diff)).toContain("#2");
+	});
+});

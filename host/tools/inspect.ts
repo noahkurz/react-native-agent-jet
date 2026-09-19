@@ -1,3 +1,4 @@
+import type { UINode } from "../../src/protocol.js";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -108,13 +109,19 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 				platform,
 			);
 			const key = platform ?? app.connectionFor()?.device.platform ?? "default";
+
+			const wasFiltered = interactive || maxDepth !== undefined;
+			const filter = (tree: UINode[]) => (wasFiltered ? filterTree(tree, { interactive, maxDepth }) : tree);
+
 			if (changesSince) {
-				const diff = diffTrees(lastTree.get(key) ?? null, raw);
+				const previous = lastTree.get(key) ?? null;
+				const diff = diffTrees(previous && filter(previous), filter(raw));
 				lastTree.set(key, raw);
 				return text(formatDiff(diff));
 			}
+
 			lastTree.set(key, raw);
-			const nodes = interactive || maxDepth !== undefined ? filterTree(raw, { interactive, maxDepth }) : raw;
+			const nodes = filter(raw);
 			if (format === "json") return text(json(nodes));
 			const lines = outline(nodes, frames ?? false);
 			return text(lines.length ? lines.join("\n") : "(nothing rendered)");
