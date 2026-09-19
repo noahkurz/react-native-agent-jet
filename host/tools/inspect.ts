@@ -55,6 +55,12 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			const shot = await (await deviceFor(app, platform)).screenshot({ preferredPixelWidth: width, pointWidth });
 			const data = (await readFile(shot.path)).toString("base64");
 
+			const pixelsPerPoint = pointWidth === null ? null : shot.width / pointWidth;
+			const howToConvert =
+				pixelsPerPoint === null
+					? "no app is connected, so the point size of this screen is unknown"
+					: `divide them by ${pixelsPerPoint.toFixed(2)} to get tap coordinates`;
+
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
@@ -62,7 +68,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 						type: "text",
 						text: shot.inPoints
 							? `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt — safe for tap/swipe coordinates)`
-							: `Saved to ${shot.path} (${shot.width}px wide — these are pixels, not points, so do not use them as tap coordinates)`,
+							: `Saved to ${shot.path} (${shot.width}px wide — these are pixels, not points; ${howToConvert})`,
 					},
 				],
 			};
@@ -80,7 +86,12 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 					.boolean()
 					.optional()
 					.describe("Only actionable nodes (pressable, input, scroll) and their ancestors — much smaller"),
-				maxDepth: z.number().int().optional().describe("Maximum number of levels to return (1 = top-level nodes only)"),
+				maxDepth: z
+					.number()
+					.int()
+					.min(1)
+					.optional()
+					.describe("Maximum number of levels to return (1 = top-level nodes only)"),
 				frames: z.boolean().optional().describe("Include on-screen coordinates (default false)"),
 				includeOffscreen: z.boolean().optional().describe("Include elements that are mounted but off screen"),
 				changesSince: z

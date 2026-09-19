@@ -48,6 +48,11 @@ describe("filterTree", () => {
 		expect(filterTree(tree, { maxDepth: 1 })[0]!.children).toHaveLength(0);
 	});
 
+	test("a maxDepth below one returns nothing rather than bare roots", () => {
+		expect(filterTree(tree, { maxDepth: 0 })).toEqual([]);
+		expect(filterTree(tree, { maxDepth: -1 })).toEqual([]);
+	});
+
 	test("without options the tree is unchanged", () => {
 		expect(outline(filterTree(tree, {}), false)).toEqual(outline(tree, false));
 	});
