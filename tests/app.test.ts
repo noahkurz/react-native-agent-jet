@@ -5,15 +5,13 @@ import { WebSocket } from "ws";
 import { AppConnection } from "../host/app.js";
 import { HELLO } from "../src/protocol.js";
 
-let port = 8900;
-const nextPort = () => ++port;
-
 const opened: WebSocket[] = [];
 const servers: AppConnection[] = [];
 
-function serve(port: number): AppConnection {
-	const app = new AppConnection(port);
+async function serve(): Promise<AppConnection> {
+	const app = new AppConnection(0);
 	servers.push(app);
+	await app.listening;
 	return app;
 }
 
@@ -95,46 +93,41 @@ const lan = lanAddress();
 
 describe("binding", () => {
 	test("accepts connections on loopback", async () => {
-		const p = nextPort();
-		serve(p);
-		await fakeApp(p, "ios");
-		expect(await accepts("127.0.0.1", p)).toBe(true);
+		const app = await serve();
+		await fakeApp(app.port, "ios");
+		expect(await accepts("127.0.0.1", app.port)).toBe(true);
 	});
 
 	test.skipIf(lan === null)("refuses connections arriving on a routable interface", async () => {
-		const p = nextPort();
-		serve(p);
-		await fakeApp(p, "ios");
-		expect(await accepts(lan!, p)).toBe(false);
+		const app = await serve();
+		await fakeApp(app.port, "ios");
+		expect(await accepts(lan!, app.port)).toBe(false);
 	});
 });
 
 describe("connection registry", () => {
 	test("registers an app once it says hello", async () => {
-		const p = nextPort();
-		const app = serve(p);
+		const app = await serve();
 		expect(app.connected).toBe(false);
-		await fakeApp(p, "ios");
+		await fakeApp(app.port, "ios");
 		await until(() => app.connected, "the app to register");
 		expect(app.connected).toBe(true);
 		expect(app.device?.platform).toBe("ios");
 	});
 
 	test("keeps one connection per platform and holds both at once", async () => {
-		const p = nextPort();
-		const app = serve(p);
-		await fakeApp(p, "ios");
-		await fakeApp(p, "android");
+		const app = await serve();
+		await fakeApp(app.port, "ios");
+		await fakeApp(app.port, "android");
 		await until(() => app.all.length === 2, "both platforms to register");
 		expect(app.all.map((a) => a.platform).sort()).toEqual(["android", "ios"]);
 	});
 
 	test("a second app on the same platform replaces the first", async () => {
-		const p = nextPort();
-		const app = serve(p);
-		await fakeApp(p, "ios", { ok: true }, "first-launch");
+		const app = await serve();
+		await fakeApp(app.port, "ios", { ok: true }, "first-launch");
 		await until(() => app.all[0]?.appName === "first-launch", "the first app to register");
-		await fakeApp(p, "ios", { ok: true }, "second-launch");
+		await fakeApp(app.port, "ios", { ok: true }, "second-launch");
 		await until(() => app.all[0]?.appName === "second-launch", "the replacement to register");
 		expect(app.all).toHaveLength(1);
 		expect(app.connected).toBe(true);
@@ -143,19 +136,17 @@ describe("connection registry", () => {
 
 describe("platform routing", () => {
 	test("routes a request to the requested platform", async () => {
-		const p = nextPort();
-		const app = serve(p);
-		await fakeApp(p, "ios", "from-ios");
-		await fakeApp(p, "android", "from-android");
+		const app = await serve();
+		await fakeApp(app.port, "ios", "from-ios");
+		await fakeApp(app.port, "android", "from-android");
 		await until(() => app.all.length === 2, "both platforms to register");
 		expect(await app.request("ping", {}, "ios")).toBe("from-ios" as never);
 		expect(await app.request("ping", {}, "android")).toBe("from-android" as never);
 	});
 
 	test("naming an unconnected platform fails with that platform in the message", async () => {
-		const p = nextPort();
-		const app = serve(p);
-		await fakeApp(p, "ios");
+		const app = await serve();
+		await fakeApp(app.port, "ios");
 		await until(() => app.connected, "the ios app to register");
 		await expect(app.request("ping", {}, "android")).rejects.toThrow(/No android app connected/);
 	}, 15_000);
@@ -163,9 +154,8 @@ describe("platform routing", () => {
 
 describe("select_platform is honoured strictly", () => {
 	test("does not silently fall back to the other platform", async () => {
-		const p = nextPort();
-		const app = serve(p);
-		await fakeApp(p, "ios", "from-ios");
+		const app = await serve();
+		await fakeApp(app.port, "ios", "from-ios");
 		await until(() => app.connected, "the ios app to register");
 		app.preferred = "android";
 		expect(app.connected).toBe(false);
@@ -173,10 +163,9 @@ describe("select_platform is honoured strictly", () => {
 	}, 15_000);
 
 	test("uses the preferred platform when it is connected", async () => {
-		const p = nextPort();
-		const app = serve(p);
-		await fakeApp(p, "ios", "from-ios");
-		await fakeApp(p, "android", "from-android");
+		const app = await serve();
+		await fakeApp(app.port, "ios", "from-ios");
+		await fakeApp(app.port, "android", "from-android");
 		await until(() => app.all.length === 2, "both platforms to register");
 		app.preferred = "ios";
 		expect(await app.request("ping", {})).toBe("from-ios" as never);

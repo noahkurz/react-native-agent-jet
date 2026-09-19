@@ -34,17 +34,23 @@ export class AppConnection {
 	preferred: Platform | null = (process.env[ENV.platform] as Platform | undefined) ?? null;
 
 	private readonly server: WebSocketServer;
+	private readonly requestedPort: number;
 
-	constructor(readonly port: number) {
+	readonly listening: Promise<void>;
+
+	constructor(requestedPort: number) {
+		this.requestedPort = requestedPort;
+
 		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
-		const server = new WebSocketServer({ port, host });
+		const server = new WebSocketServer({ port: requestedPort, host });
 		this.server = server;
+		this.listening = new Promise((resolve) => server.once("listening", () => resolve()));
 
 		const reachableBeyondLoopback = !LOOPBACK_HOSTS.has(host);
 		if (reachableBeyondLoopback) {
 			process.stderr.write(
 				`[agent-jet-mcp] WARNING: listening on ${host}, which is reachable from your network. ` +
-					`There is no authentication, so anyone who can reach port ${port} can impersonate your app. ` +
+					`There is no authentication, so anyone who can reach port ${requestedPort} can impersonate your app. ` +
 					`Only do this on a trusted network.\n`,
 			);
 		}
@@ -66,6 +72,11 @@ export class AppConnection {
 				resolve();
 			});
 		});
+	}
+
+	get port(): number {
+		const address = this.server.address();
+		return typeof address === "object" && address !== null ? address.port : this.requestedPort;
 	}
 
 	get active(): Connection | null {
