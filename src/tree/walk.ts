@@ -32,12 +32,14 @@ export function rootFibers(): Fiber[] {
 	const hook = devtoolsHook();
 	const hookCanEnumerateRoots = Boolean(hook?.renderers) && typeof hook?.getFiberRoots === "function";
 	if (!hookCanEnumerateRoots) return [];
+
 	const roots: Fiber[] = [];
 	for (const rendererId of hook.renderers.keys()) {
 		for (const root of hook.getFiberRoots(rendererId)) {
 			if (root.current) roots.push(root.current);
 		}
 	}
+
 	return roots;
 }
 
@@ -74,6 +76,7 @@ export function nameOf(fiber: Pick<Fiber, "type">): string {
 	if (!canCarryAName) return "";
 	const type = raw as NamedType;
 	const tamagui = type.staticConfig?.componentName;
+
 	if (typeof raw === "function") {
 		return tamagui || type.displayName || type.name || "Anonymous";
 	}
@@ -131,11 +134,13 @@ function describe(fiber: Fiber, name: string, props: Props): Described {
 	const isHost = fiber.tag === HOST_COMPONENT;
 	const onPress = typeof props.onPress === "function" ? (props.onPress as (event: unknown) => void) : undefined;
 	const input = isHost && /TextInput/.test(name);
+
 	const instance = fiber.stateNode as Partial<ScrollInstance> | null;
 	const scrollInstance =
 		instance && typeof instance.scrollTo === "function" && typeof instance.scrollToEnd === "function"
 			? (instance as ScrollInstance)
 			: undefined;
+
 	return {
 		testID: stringProp(props, "testID"),
 		label: stringProp(props, "accessibilityLabel") ?? stringProp(props, "aria-label"),
@@ -177,15 +182,19 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 		if (typeof fiber.memoizedProps === "string") parent.textParts.push(fiber.memoizedProps);
 		return;
 	}
+
 	const props = propsOf(fiber);
 	const name = nameOf(fiber);
+
 	const subtreeIsHidden = props !== null && isHiddenSubtree(name, props);
 	if (subtreeIsHidden) return;
+
 	const screenStackChild = name === RN_SCREEN_STACK ? fiber.child : null;
 	if (screenStackChild) {
 		visit(lastSibling(screenStackChild), parent, all);
 		return;
 	}
+
 	let current = parent;
 	let created: SemanticNode | null = null;
 	if (props) {
@@ -202,13 +211,16 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 				if (info.placeholder !== undefined) node.placeholder = info.placeholder;
 			}
 			if (info.scrollInstance) node.scrollable = true;
+
 			created = { node, fiber, parent, onPress: info.onPress, scrollInstance: info.scrollInstance, textParts: [] };
 			parent.node.children.push(node);
 			all.push(created);
 			current = created;
 		}
 	}
+
 	for (let child = fiber.child; child; child = child.sibling) visit(child, current, all);
+
 	if (created) finalize(created, all);
 }
 
@@ -241,16 +253,19 @@ function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 	if (!only) return;
 	const onlySemantic = all.find((candidate) => candidate.node === only);
 	if (!onlySemantic) return;
+
 	const absorbsText =
 		isBareLeaf(only) && addsNoIdentityOfItsOwn(only, semantic.node) && (!only.text || !semantic.node.text);
 	const absorbsWrapper =
 		isTheSameControl(onlySemantic, semantic) && !semantic.node.text && addsNoIdentityOfItsOwn(only, semantic.node);
 	if (!absorbsText && !absorbsWrapper) return;
+
 	if (only.text) semantic.node.text = only.text;
 	if (only.testID && !semantic.node.testID) semantic.node.testID = only.testID;
 	if (only.label && !semantic.node.label) semantic.node.label = only.label;
 	if (only.role && !semantic.node.role) semantic.node.role = only.role;
 	semantic.node.children = only.children;
+
 	for (const grandchild of all) {
 		if (grandchild.parent === onlySemantic) grandchild.parent = semantic;
 	}
@@ -269,5 +284,6 @@ export function snapshot(): Snapshot {
 		};
 		for (let child = rootFiber.child; child; child = child.sibling) visit(child, root, all);
 	}
+
 	return { roots, all };
 }

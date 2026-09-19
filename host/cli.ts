@@ -20,8 +20,10 @@ function parseArgs(argv: string[]): { command: string; flags: Map<string, string
 	const flags = new Map<string, string | true>();
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i]!;
+
 		const isFlag = arg.startsWith("--");
 		if (!isFlag) continue;
+
 		const next = rest[i + 1];
 		const nextIsThisFlagsValue = next !== undefined && !next.startsWith("--");
 		if (nextIsThisFlagsValue) {
@@ -72,6 +74,7 @@ async function writeSkill(cwd: string): Promise<"written" | "present"> {
 	const path = join(cwd, ...SKILL_PATH);
 	const skillAlreadyWritten = existsSync(path);
 	if (skillAlreadyWritten) return "present";
+
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, SKILL);
 	return "written";
@@ -81,9 +84,11 @@ async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "mi
 	const path = join(cwd, PLAYBOOK_FILE);
 	const projectHasAPlaybook = existsSync(path);
 	if (!projectHasAPlaybook) return "missing";
+
 	const current = await readFile(path, "utf8");
 	const playbookAlreadyAppended = current.includes(PLAYBOOK_MARKER);
 	if (playbookAlreadyAppended) return "present";
+
 	await writeFile(path, `${current.trimEnd()}\n\n${PLAYBOOK}`);
 	return "appended";
 }
@@ -91,15 +96,18 @@ async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "mi
 async function reportDevices() {
 	const simulator = await bootedName().catch(() => null);
 	if (simulator) ok(`iOS Simulator booted: ${simulator}`);
+
 	const axeInstalled = await hasAxe();
 	if (axeInstalled) ok("AXe installed (real keystrokes, taps and swipes on iOS)");
 	else
 		warn("AXe not installed; optional, enables real keystrokes and touches on iOS: brew install cameroncooke/axe/axe");
+
 	const adb = await hasAdb();
 	const device = adb ? await android.name() : null;
 	if (device) ok(`Android device: ${device}`);
 	else if (adb) ok("adb installed (real input on Android); no device connected right now");
 	else warn("adb not on PATH; optional, needed for Android screenshots and input");
+
 	const nothingIsRunning = !simulator && !device;
 	if (nothingIsRunning) warn("no iOS Simulator or Android device is running; start one before testing");
 }
@@ -126,6 +134,7 @@ async function init(flags: Map<string, string | true>) {
 	if (!isAProjectRoot) {
 		throw new Error("No package.json here. Run this from your app's root directory.");
 	}
+
 	const appName = ((await readJson(join(cwd, "package.json"))).name as string | undefined) ?? "my-app";
 	console.log("\nreact-native-agent-jet init\n");
 
@@ -141,6 +150,7 @@ async function init(flags: Map<string, string | true>) {
 	if (clients === null) {
 		throw new Error(`Unknown --client. Choose from: ${clientList()}, or "all".`);
 	}
+
 	for (const id of clients) {
 		const r = await writeClientConfig(id, cwd, packageDir);
 		ok(
@@ -155,6 +165,7 @@ async function init(flags: Map<string, string | true>) {
 		const skill = await writeSkill(cwd);
 		ok(skill === "written" ? `wrote ${skillPath}` : `${skillPath} already exists`);
 	}
+
 	if (flags.get("playbook") === "true") {
 		const playbook = await appendPlaybook(cwd);
 		if (playbook === "appended") ok(`added the agent playbook to ${PLAYBOOK_FILE}`);
@@ -178,14 +189,17 @@ async function registeredClients(cwd: string): Promise<string[]> {
 	for (const id of Object.keys(CLIENTS) as ClientId[]) {
 		const spec = CLIENTS[id];
 		const path = spec.file(cwd);
+
 		const clientHasAConfigHere = existsSync(path);
 		if (!clientHasAConfigHere) continue;
+
 		try {
 			const text = await readFile(path, "utf8");
 			const hit = spec.format === "toml" ? tomlTablePattern().test(text) : text.includes(`"${SERVER_KEY}"`);
 			if (hit) found.push(spec.label);
 		} catch {}
 	}
+
 	return found;
 }
 

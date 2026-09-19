@@ -40,6 +40,7 @@ export const platformSchema = z
 export function center(node: UINode): { x: number; y: number } | null {
 	const tappableArea = node.visible === false ? undefined : node.frame;
 	if (!tappableArea) return null;
+
 	return {
 		x: Math.round(tappableArea.x + tappableArea.width / 2),
 		y: Math.round(tappableArea.y + tappableArea.height / 2),
@@ -54,6 +55,7 @@ export async function locate(
 ): Promise<UINode> {
 	const matches = await app.request("find", { target }, platform);
 	const picked = matches[index ?? (typeof target === "string" ? 0 : (target.index ?? 0))];
+
 	if (!picked) {
 		throw new Error(
 			matches.length === 0
@@ -61,6 +63,7 @@ export async function locate(
 				: `Index out of range: ${matches.length} elements match ${JSON.stringify(target)}`,
 		);
 	}
+
 	return picked;
 }
 

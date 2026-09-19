@@ -37,15 +37,18 @@ function shadowNodeInstance(stateNode: FabricStateNode): Measurable | null {
 	const instance: Measurable = {
 		measureInWindow: (callback) => manager.measureInWindow(shadowNode, callback),
 	};
+
 	const dispatchCommand = manager.dispatchCommand;
 	if (dispatchCommand) {
 		instance.focus = () => dispatchCommand(shadowNode, "focus", []);
 		instance.blur = () => dispatchCommand(shadowNode, "blur", []);
 	}
+
 	const setNativeProps = manager.setNativeProps;
 	if (setNativeProps) {
 		instance.setNativeProps = (props) => setNativeProps(shadowNode, props);
 	}
+
 	return instance;
 }
 
@@ -64,6 +67,7 @@ export function publicInstanceOf(fiber: Fiber): Measurable | null {
 function measure(fiber: Fiber): Promise<Frame | undefined> {
 	const instance = publicInstanceOf(fiber);
 	if (!instance) return Promise.resolve(undefined);
+
 	return new Promise((resolve) => {
 		const timer = setTimeout(() => resolve(undefined), MEASURE_TIMEOUT_MS);
 		try {

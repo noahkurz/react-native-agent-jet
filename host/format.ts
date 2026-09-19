@@ -13,19 +13,23 @@ export function describeLine(node: UINode, frames = true): string {
 	if (node.label) parts.push(`label=${quote(node.label)}`);
 	if (node.role) parts.push(`role=${node.role}`);
 	if (node.text) parts.push(quote(node.text));
+
 	if (node.input) {
 		parts.push("[input]");
 		if (node.value !== undefined) parts.push(`value=${quote(node.value)}`);
 		if (node.placeholder) parts.push(`placeholder=${quote(node.placeholder)}`);
 	}
+
 	if (node.pressable) parts.push("[press]");
 	if (node.scrollable) parts.push("[scroll]");
+
 	const frameToReport = frames ? node.frame : undefined;
 	if (frameToReport) {
 		const { x, y, width, height } = frameToReport;
 		parts.push(`@(${x},${y} ${width}x${height})`);
 	}
 	if (node.visible === false) parts.push("[offscreen]");
+
 	return parts.join(" ");
 }
 
@@ -47,8 +51,10 @@ export function filterTree(nodes: UINode[], opts: { interactive?: boolean; maxDe
 		const children = atDepthLimit ? [] : filterTree(node.children, opts, depth + 1);
 		const nothingHereToActOn = Boolean(opts.interactive) && !isActionable(node) && children.length === 0;
 		if (nothingHereToActOn) continue;
+
 		result.push({ ...node, children });
 	}
+
 	return result;
 }
 
@@ -77,9 +83,11 @@ export type TreeDiff = { added: UINode[]; removed: number[]; changed: Array<{ no
 export function diffTrees(previous: UINode[] | null, next: UINode[]): TreeDiff {
 	const before = previous ? flatten(previous) : new Map<number, FlatNode>();
 	const after = flatten(next);
+
 	const removed = [...before.keys()].filter((id) => !after.has(id));
 	const changed: TreeDiff["changed"] = [];
 	const addedIds = new Set<number>();
+
 	for (const [id, node] of after) {
 		const old = before.get(id);
 		if (!old) {
@@ -89,7 +97,9 @@ export function diffTrees(previous: UINode[] | null, next: UINode[]): TreeDiff {
 		const fields = nodeChanged(old, node);
 		if (fields.length) changed.push({ node, fields });
 	}
+
 	const added = collectSubtrees(next, addedIds);
+
 	return { added, removed, changed };
 }
 
@@ -109,8 +119,11 @@ export function formatDiff(diff: TreeDiff): string {
 		lines.push(`+ ${describeLine(node, false)}`);
 		for (const line of outline(node.children, false, 1)) lines.push(`+ ${line}`);
 	}
+
 	for (const { node, fields } of diff.changed)
 		lines.push(`~ ${describeLine(node as UINode, false)} (${fields.join(",")})`);
+
 	for (const id of diff.removed) lines.push(`- #${id}`);
+
 	return lines.length ? lines.join("\n") : "(no changes)";
 }

@@ -18,6 +18,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 		async () => {
 			const appConnected = await app.ready(STATUS_WAIT_MS);
 			const adbInstalled = await hasAdb();
+
 			return text(
 				json({
 					appConnected,
@@ -32,6 +33,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			);
 		},
 	);
+
 	server.registerTool(
 		"screenshot",
 		{
@@ -52,6 +54,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
 			const shot = await (await deviceFor(app, platform)).screenshot({ preferredPixelWidth: width, pointWidth });
 			const data = (await readFile(shot.path)).toString("base64");
+
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
@@ -65,6 +68,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			};
 		},
 	);
+
 	server.registerTool(
 		"tree",
 		{
@@ -105,6 +109,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			return text(lines.length ? lines.join("\n") : "(nothing rendered)");
 		},
 	);
+
 	server.registerTool(
 		"find",
 		{
@@ -120,6 +125,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			);
 		},
 	);
+
 	server.registerTool(
 		"wait_for",
 		{
@@ -141,6 +147,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			}
 		},
 	);
+
 	server.registerTool(
 		"nav_state",
 		{
@@ -160,6 +167,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			return text(json({ current: state.current, path: state.path }));
 		},
 	);
+
 	server.registerTool(
 		"state",
 		{
@@ -169,6 +177,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 		},
 		async ({ key, platform }) => text(json(await app.request("state", { key }, platform))),
 	);
+
 	server.registerTool(
 		"logs",
 		{
@@ -193,6 +202,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			);
 		},
 	);
+
 	server.registerTool(
 		"network",
 		{

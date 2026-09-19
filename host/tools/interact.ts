@@ -25,22 +25,27 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 				const device = await deviceFor(app, platform);
 				const node = await locate(app, target, index, platform);
 				const point = center(node);
+
 				if (point) {
 					await device.tap(point);
 					return text(`Tapped ${describeLine(node)} at (${point.x},${point.y})`);
 				}
+
 				const accessible = node.testID ? { id: node.testID } : node.label ? { label: node.label } : null;
 				const tapByAccessibility = device.tapAccessible;
 				if (!accessible || !tapByAccessibility) {
 					throw new Error(`Element has no on-screen frame: ${describeLine(node)}`);
 				}
+
 				await tapByAccessibility(accessible);
 				return text(`Tapped ${describeLine(node)} by accessibility ${JSON.stringify(accessible)}`);
 			}
+
 			const pressed = await app.request("press", { target, index }, platform);
 			return text(`Pressed ${describeLine(pressed)}`);
 		},
 	);
+
 	server.registerTool(
 		"tap",
 		{
@@ -53,6 +58,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			return text(`Tapped (${x},${y})`);
 		},
 	);
+
 	server.registerTool(
 		"type_text",
 		{
@@ -89,6 +95,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			);
 		},
 	);
+
 	server.registerTool(
 		"set_text",
 		{
@@ -106,6 +113,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			return text(`Set text on ${describeLine(node)} via ${node.via.join("+")}`);
 		},
 	);
+
 	server.registerTool(
 		"swipe",
 		{
@@ -141,6 +149,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			return text(`Swiped ${direction} from (${start.x},${start.y}) to (${end.x},${end.y})`);
 		},
 	);
+
 	server.registerTool(
 		"scroll_to",
 		{
@@ -160,6 +169,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			return text(`Scrolled ${describeLine(node)}`);
 		},
 	);
+
 	server.registerTool(
 		"press_key",
 		{
@@ -171,6 +181,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			return text(`Pressed ${key}`);
 		},
 	);
+
 	server.registerTool(
 		"press_button",
 		{
@@ -186,6 +197,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			return text(`Pressed ${button}`);
 		},
 	);
+
 	server.registerTool(
 		"navigate",
 		{
@@ -194,6 +206,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		},
 		async ({ name, params, platform }) => text(json(await app.request("navigate", { name, params }, platform))),
 	);
+
 	server.registerTool(
 		"go_back",
 		{ description: "Go back in the navigation stack.", inputSchema: { platform: platformSchema } },

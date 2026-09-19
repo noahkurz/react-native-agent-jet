@@ -20,6 +20,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			);
 		},
 	);
+
 	server.registerTool(
 		"clear_logs",
 		{ description: "Clear captured logs and network entries.", inputSchema: { platform: platformSchema } },
@@ -28,6 +29,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			return text("Cleared");
 		},
 	);
+
 	server.registerTool(
 		"open_url",
 		{
@@ -39,6 +41,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			return text(`Opened ${url}`);
 		},
 	);
+
 	server.registerTool(
 		"reload",
 		{ description: "Reload the JS bundle (like pressing r in Metro).", inputSchema: { platform: platformSchema } },
@@ -47,6 +50,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			return text("Reloading");
 		},
 	);
+
 	server.registerTool(
 		"launch_app",
 		{
@@ -58,6 +62,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			return text(`Launched ${bundleId}`);
 		},
 	);
+
 	server.registerTool(
 		"terminate_app",
 		{
@@ -69,6 +74,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			return text(`Terminated ${bundleId}`);
 		},
 	);
+
 	server.registerTool(
 		"set_appearance",
 		{
@@ -80,6 +86,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 			return text(`Appearance set to ${mode}`);
 		},
 	);
+
 	server.registerTool(
 		"native_tree",
 		{

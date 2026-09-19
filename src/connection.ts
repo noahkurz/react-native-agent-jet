@@ -47,6 +47,7 @@ async function handle(socket: WebSocket, raw: string) {
 	} catch {
 		return;
 	}
+
 	let response: Response;
 	try {
 		const result = await shared.dispatch(request.method, request.params);
@@ -54,6 +55,7 @@ async function handle(socket: WebSocket, raw: string) {
 	} catch (error) {
 		response = { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
+
 	const socketIsStillOpen = socket.readyState === WebSocket.OPEN;
 	if (socketIsStillOpen) socket.send(JSON.stringify(response));
 }
@@ -61,6 +63,7 @@ async function handle(socket: WebSocket, raw: string) {
 export function connect(url: string) {
 	const alreadyConnectedOrShutDown = shared.stopped || Boolean(shared.socket);
 	if (alreadyConnectedOrShutDown) return;
+
 	let ws: WebSocket;
 	try {
 		ws = new WebSocket(url);
@@ -68,16 +71,21 @@ export function connect(url: string) {
 		setTimeout(() => connect(url), RECONNECT_MS);
 		return;
 	}
+
 	shared.socket = ws;
+
 	ws.onopen = () => {
 		const hello: Hello = { type: HELLO, device: deviceInfo(), version: VERSION };
 		ws.send(JSON.stringify(hello));
 		log(`connected to ${url}`);
 	};
+
 	ws.onmessage = (event) => {
 		void handle(ws, String(event.data));
 	};
+
 	ws.onerror = () => {};
+
 	ws.onclose = () => {
 		if (shared.socket === ws) shared.socket = null;
 		if (!shared.stopped) setTimeout(() => connect(url), RECONNECT_MS);

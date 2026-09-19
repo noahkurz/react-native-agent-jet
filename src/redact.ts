@@ -86,6 +86,7 @@ export function redactBody(text: string): string {
 			return JSON.stringify(redactStructured(JSON.parse(trimmed), 0));
 		} catch {}
 	}
+
 	return redactText(text).replace(/(^|[?&])([^=&\s]+)=([^&\s]+)/g, (match, prefix: string, key: string) =>
 		isSensitiveKey(key) ? `${prefix}${key}=${REDACTED}` : match,
 	);
@@ -96,6 +97,7 @@ export function redactUrl(url: string): string {
 	const queryStart = url.indexOf("?");
 	const hasQueryString = queryStart !== -1;
 	if (!hasQueryString) return redactText(url);
+
 	const path = url.slice(0, queryStart);
 	const query = url
 		.slice(queryStart + 1)
@@ -108,5 +110,6 @@ export function redactUrl(url: string): string {
 			return isSensitiveKey(key) ? `${key}=${REDACTED}` : pair;
 		})
 		.join("&");
+
 	return redactText(`${path}?${query}`);
 }

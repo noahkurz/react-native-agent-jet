@@ -39,6 +39,7 @@ export class AppConnection {
 		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
 		const server = new WebSocketServer({ port, host });
 		this.server = server;
+
 		const reachableBeyondLoopback = !LOOPBACK_HOSTS.has(host);
 		if (reachableBeyondLoopback) {
 			process.stderr.write(
@@ -47,6 +48,7 @@ export class AppConnection {
 					`Only do this on a trusted network.\n`,
 			);
 		}
+
 		server.on("connection", (socket) => this.accept(socket));
 		server.on("error", (error) => {
 			process.stderr.write(`[agent-jet-mcp] websocket server error: ${error.message}\n`);
@@ -56,6 +58,7 @@ export class AppConnection {
 	close(): Promise<void> {
 		this.connections.splice(0);
 		for (const client of this.server.clients) client.terminate();
+
 		return new Promise((resolve) => {
 			const stopWaitingForStragglers = setTimeout(resolve, CLOSE_TIMEOUT_MS);
 			this.server.close(() => {
@@ -94,8 +97,10 @@ export class AppConnection {
 
 	private accept(socket: WebSocket) {
 		socket.on("message", (data) => this.receive(socket, String(data)));
+
 		socket.on("close", () => {
 			this.connections = this.connections.filter((connection) => connection.socket !== socket);
+
 			for (const [id, entry] of this.pending) {
 				if (entry.socket !== socket) continue;
 				clearTimeout(entry.timer);
@@ -112,6 +117,7 @@ export class AppConnection {
 		} catch {
 			return;
 		}
+
 		if ("type" in message) {
 			if (message.type === HELLO) {
 				this.connections = this.connections.filter(
@@ -122,10 +128,13 @@ export class AppConnection {
 			}
 			return;
 		}
+
 		const entry = this.pending.get(message.id);
 		if (!entry) return;
+
 		this.pending.delete(message.id);
 		clearTimeout(entry.timer);
+
 		if (message.ok) entry.resolve(message.result);
 		else entry.reject(new Error(message.error));
 	}

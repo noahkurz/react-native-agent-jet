@@ -104,6 +104,7 @@ export function tomlTablePattern(): RegExp {
 	const optionalCarriageReturn = "\\r?";
 	const lineEnd = "$";
 	const header = ["\\[", "mcp_servers", "\\.", SERVER_KEY, "\\]"].join(optionalSpace);
+
 	return new RegExp(
 		[lineStart, optionalSpace, header, optionalSpace, trailingComment, optionalCarriageReturn, lineEnd].join(""),
 		"m",
@@ -118,6 +119,7 @@ async function writeToml(path: string, serverPath: string): Promise<"written" | 
 	const existing = existsSync(path) ? await readFile(path, "utf8") : "";
 	const alreadyRegistered = tomlTablePattern().test(existing);
 	if (alreadyRegistered) return "present";
+
 	const block = `\n[mcp_servers.${SERVER_KEY}]\ncommand = "node"\nargs = [${tomlString(serverPath)}]\n`;
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, existing ? `${existing.trimEnd()}\n${block}` : block.trimStart());

@@ -113,32 +113,38 @@ export function navigateTo(name: string, params?: Record<string, unknown>): { ro
 		expo.navigate(name);
 		return { route: currentRouteName() };
 	}
+
 	const nav = navigation();
 	const chain = chainToRoute(nav.getRootState() as RouteState | undefined, name);
+
 	const routeIsNestedInAnotherNavigator = chain !== null && chain.length > 1;
 	if (routeIsNestedInAnotherNavigator) {
 		nav.navigate(chain[0]!, nestedParams(chain.slice(1), params));
 	} else {
 		nav.navigate(name, params);
 	}
+
 	return { route: nav.getCurrentRoute()?.name };
 }
 
 export function goBack(): { route?: string } {
 	const nav = navigationOrNull();
 	const expo = router();
+
 	if (nav) {
 		const hasSomewhereToGoBackTo = nav.canGoBack();
 		if (!hasSomewhereToGoBackTo) throw new Error("Cannot go back from the current route");
 		nav.goBack();
 		return { route: nav.getCurrentRoute()?.name };
 	}
+
 	if (expo) {
 		const hasSomewhereToGoBackTo = expo.canGoBack();
 		if (!hasSomewhereToGoBackTo) throw new Error("Cannot go back from the current route");
 		expo.back();
 		return { route: currentRouteName() };
 	}
+
 	throw new Error("No navigationRef or router registered");
 }
 
@@ -180,7 +186,9 @@ export function navigationSummary(): unknown {
 			);
 		throw new Error("No navigationRef registered; pass it to useAgentJet()");
 	}
+
 	const root = nav.getRootState() as RouteState | undefined;
+
 	return { current: nav.getCurrentRoute(), path: focusedPath(root), state: compactState(root) };
 }
 
@@ -191,6 +199,7 @@ export function appName(): string | undefined {
 function queryState() {
 	const client = shared.options.queryClient;
 	if (!client) return undefined;
+
 	return client
 		.getQueryCache()
 		.getAll()
@@ -228,7 +237,9 @@ export function readState(key?: string): Record<string, unknown> {
 		if (!getter) throw new Error(`Unknown state key "${key}"; known keys: ${[...all.keys()].join(", ") || "(none)"}`);
 		return { [key]: resolve(getter) };
 	}
+
 	const result: Record<string, unknown> = {};
 	for (const [name, getter] of all) result[name] = resolve(getter);
+
 	return result;
 }

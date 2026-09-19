@@ -18,6 +18,7 @@ export async function pngWidth(path: string): Promise<number> {
 	const isLongEnough = buffer.length >= IHDR_HEADER_LENGTH;
 	const isPng = isLongEnough && startsWithSignature && marker === "IHDR";
 	if (!isPng) throw new Error("Not a PNG or unexpected header");
+
 	return buffer.readUInt32BE(IHDR_WIDTH_OFFSET);
 }
 
@@ -40,6 +41,7 @@ async function downscaleIfPossible(path: string, nativeWidth: number, requestedW
 	if (wouldUpscale) return nativeWidth;
 	const canResize = await hasSips();
 	if (!canResize) return nativeWidth;
+
 	try {
 		await exec("sips", ["--resampleWidth", String(targetWidth), path]);
 		return targetWidth;
@@ -62,11 +64,14 @@ export type SizeRequest = {
 
 export async function sizeScreenshot(path: string, request: SizeRequest = {}): Promise<Screenshot> {
 	const native = await pngWidth(path);
+
 	const fromScale = request.deviceScale ? native / request.deviceScale : null;
 	const pointWidth = request.pointWidth ?? fromScale;
 	const pointWidthInPixels = pointWidth === null ? null : Math.round(pointWidth);
 	const requested = request.preferredPixelWidth ?? pointWidthInPixels;
 	if (requested === null) return { path, width: native, inPoints: false };
+
 	const width = await downscaleIfPossible(path, native, requested);
+
 	return { path, width, inPoints: pointWidthInPixels !== null && width === pointWidthInPixels };
 }
