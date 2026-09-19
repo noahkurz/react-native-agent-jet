@@ -15,8 +15,8 @@ beforeAll(() => {
 	writeFileSync(
 		join(bin, "adb"),
 		`#!/bin/sh
-: > ${log}
-for arg in "$@"; do printf '%s\\n' "$arg" >> ${log}; done
+: > "${log}"
+for arg in "$@"; do printf '%s\\n' "$arg" >> "${log}"; done
 case "$*" in
   *devices*) printf 'List of devices attached\\nemulator-5554\\tdevice\\n' ;;
   *"wm density"*) printf 'Physical density: 420\\n' ;;

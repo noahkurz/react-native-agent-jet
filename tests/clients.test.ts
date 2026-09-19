@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir, homedir } from "node:os";
 import { join } from "node:path";
-import { CLIENTS, resolveClient, writeClientConfig } from "../host/clients.js";
+import { CLIENTS, resolveClient, tomlTablePattern, writeClientConfig } from "../host/clients.js";
 
 /** A throwaway project with the package "installed", so paths resolve like a real one. */
 function project() {
@@ -124,5 +124,31 @@ describe("global-scoped clients", () => {
 		expect(CLIENTS.codex.scope).toBe("global");
 		expect(CLIENTS.windsurf.scope).toBe("global");
 		expect(CLIENTS.claude.scope).toBe("project");
+	});
+});
+
+describe("detecting an existing codex table", () => {
+	const registered = (config: string) => tomlTablePattern().test(config);
+
+	test("recognises the table with unix line endings", () => {
+		expect(registered('[mcp_servers.jet]\ncommand = "node"\n')).toBe(true);
+	});
+
+	test("recognises the table when the config was written on windows", () => {
+		// regression: the end-of-line anchor did not allow for the carriage return, so init
+		// appended a duplicate table every run on Windows
+		expect(registered('[mcp_servers.other]\r\n[mcp_servers.jet]\r\ncommand = "node"\r\n')).toBe(true);
+	});
+
+	test("recognises a table followed by a comment", () => {
+		expect(registered("[mcp_servers.jet] # added by init\r\n")).toBe(true);
+	});
+
+	test("ignores a commented-out table", () => {
+		expect(registered("# [mcp_servers.jet]\r\n")).toBe(false);
+	});
+
+	test("ignores a differently named table", () => {
+		expect(registered("[mcp_servers.jetpack]\r\n")).toBe(false);
 	});
 });
