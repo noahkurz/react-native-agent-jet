@@ -11,8 +11,10 @@ function pruneInvisible(nodes: UINode[]): UINode[] {
 
 export async function tree(params: TreeParams): Promise<UINode[]> {
 	const snap = snapshot();
-	if (params.layout !== false) await measureAll(snap.all);
-	return params.visibleOnly === false ? snap.roots : pruneInvisible(snap.roots);
+	const layoutWasRequested = params.layout !== false;
+	if (layoutWasRequested) await measureAll(snap.all);
+	const everyNodeWasRequested = params.visibleOnly === false;
+	return everyNodeWasRequested ? snap.roots : pruneInvisible(snap.roots);
 }
 
 function textMatches(haystack: string | undefined, needle: string, exact: boolean | undefined): boolean {
@@ -37,11 +39,11 @@ function matchesString(node: UINode, needle: string): boolean {
 }
 
 function matchesSelector(node: UINode, selector: Selector): boolean {
-	if (selector.testID !== undefined && node.testID !== selector.testID) return false;
-	if (selector.type !== undefined && node.type !== selector.type) return false;
-	if (selector.label !== undefined && !textMatches(node.label, selector.label, selector.exact)) return false;
-	if (selector.text !== undefined && !textMatches(node.text, selector.text, selector.exact)) return false;
-	return true;
+	const testIDMismatches = selector.testID !== undefined && node.testID !== selector.testID;
+	const typeMismatches = selector.type !== undefined && node.type !== selector.type;
+	const labelMismatches = selector.label !== undefined && !textMatches(node.label, selector.label, selector.exact);
+	const textMismatches = selector.text !== undefined && !textMatches(node.text, selector.text, selector.exact);
+	return !testIDMismatches && !typeMismatches && !labelMismatches && !textMismatches;
 }
 
 export async function find(target: Target, layout: boolean): Promise<SemanticNode[]> {

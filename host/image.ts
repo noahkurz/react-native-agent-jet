@@ -15,9 +15,9 @@ export async function pngWidth(path: string): Promise<number> {
 	const buffer = await readFile(path);
 	const startsWithSignature = buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
 	const marker = buffer.toString("ascii", IHDR_MARKER_START, IHDR_MARKER_END);
-	if (buffer.length < IHDR_HEADER_LENGTH || !startsWithSignature || marker !== "IHDR") {
-		throw new Error("Not a PNG or unexpected header");
-	}
+	const isLongEnough = buffer.length >= IHDR_HEADER_LENGTH;
+	const isPng = isLongEnough && startsWithSignature && marker === "IHDR";
+	if (!isPng) throw new Error("Not a PNG or unexpected header");
 	return buffer.readUInt32BE(IHDR_WIDTH_OFFSET);
 }
 
@@ -36,8 +36,10 @@ async function hasSips(): Promise<boolean> {
 
 async function downscaleIfPossible(path: string, nativeWidth: number, requestedWidth: number): Promise<number> {
 	const targetWidth = Math.round(requestedWidth);
-	if (targetWidth >= nativeWidth) return nativeWidth;
-	if (!(await hasSips())) return nativeWidth;
+	const wouldUpscale = targetWidth >= nativeWidth;
+	if (wouldUpscale) return nativeWidth;
+	const canResize = await hasSips();
+	if (!canResize) return nativeWidth;
 	try {
 		await exec("sips", ["--resampleWidth", String(targetWidth), path]);
 		return targetWidth;

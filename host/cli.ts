@@ -20,9 +20,11 @@ function parseArgs(argv: string[]): { command: string; flags: Map<string, string
 	const flags = new Map<string, string | true>();
 	for (let i = 0; i < rest.length; i++) {
 		const arg = rest[i]!;
-		if (!arg.startsWith("--")) continue;
+		const isFlag = arg.startsWith("--");
+		if (!isFlag) continue;
 		const next = rest[i + 1];
-		if (next && !next.startsWith("--")) {
+		const nextIsThisFlagsValue = next !== undefined && !next.startsWith("--");
+		if (nextIsThisFlagsValue) {
 			flags.set(arg.slice(2), next);
 			i++;
 		} else {
@@ -34,7 +36,8 @@ function parseArgs(argv: string[]): { command: string; flags: Map<string, string
 
 function installedPackageDir(cwd: string): string | null {
 	const local = join(cwd, "node_modules", PACKAGE_NAME);
-	if (existsSync(join(local, "package.json"))) return local;
+	const isInstalledLocally = existsSync(join(local, "package.json"));
+	if (isInstalledLocally) return local;
 	try {
 		const require = createRequire(join(cwd, "package.json"));
 		return dirname(require.resolve(`${PACKAGE_NAME}/package.json`));
@@ -58,15 +61,17 @@ function rootFileHint(cwd: string): string {
 }
 
 function detectPackageManager(cwd: string): PackageManager {
-	if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb"))) return "bun";
-	if (existsSync(join(cwd, "pnpm-lock.yaml"))) return "pnpm";
-	if (existsSync(join(cwd, "yarn.lock"))) return "yarn";
+	const hasLockfile = (name: string) => existsSync(join(cwd, name));
+	if (hasLockfile("bun.lock") || hasLockfile("bun.lockb")) return "bun";
+	if (hasLockfile("pnpm-lock.yaml")) return "pnpm";
+	if (hasLockfile("yarn.lock")) return "yarn";
 	return "npm";
 }
 
 async function writeSkill(cwd: string): Promise<"written" | "present"> {
 	const path = join(cwd, ...SKILL_PATH);
-	if (existsSync(path)) return "present";
+	const skillAlreadyWritten = existsSync(path);
+	if (skillAlreadyWritten) return "present";
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, SKILL);
 	return "written";
@@ -74,9 +79,11 @@ async function writeSkill(cwd: string): Promise<"written" | "present"> {
 
 async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "missing"> {
 	const path = join(cwd, PLAYBOOK_FILE);
-	if (!existsSync(path)) return "missing";
+	const projectHasAPlaybook = existsSync(path);
+	if (!projectHasAPlaybook) return "missing";
 	const current = await readFile(path, "utf8");
-	if (current.includes(PLAYBOOK_MARKER)) return "present";
+	const playbookAlreadyAppended = current.includes(PLAYBOOK_MARKER);
+	if (playbookAlreadyAppended) return "present";
 	await writeFile(path, `${current.trimEnd()}\n\n${PLAYBOOK}`);
 	return "appended";
 }
@@ -84,7 +91,8 @@ async function appendPlaybook(cwd: string): Promise<"appended" | "present" | "mi
 async function reportDevices() {
 	const simulator = await bootedName().catch(() => null);
 	if (simulator) ok(`iOS Simulator booted: ${simulator}`);
-	if (await hasAxe()) ok("AXe installed (real keystrokes, taps and swipes on iOS)");
+	const axeInstalled = await hasAxe();
+	if (axeInstalled) ok("AXe installed (real keystrokes, taps and swipes on iOS)");
 	else
 		warn("AXe not installed; optional, enables real keystrokes and touches on iOS: brew install cameroncooke/axe/axe");
 	const adb = await hasAdb();
@@ -92,7 +100,8 @@ async function reportDevices() {
 	if (device) ok(`Android device: ${device}`);
 	else if (adb) ok("adb installed (real input on Android); no device connected right now");
 	else warn("adb not on PATH; optional, needed for Android screenshots and input");
-	if (!simulator && !device) warn("no iOS Simulator or Android device is running; start one before testing");
+	const nothingIsRunning = !simulator && !device;
+	if (nothingIsRunning) warn("no iOS Simulator or Android device is running; start one before testing");
 }
 
 function resolveClients(flag: string | true | undefined): ClientId[] | null {
@@ -113,7 +122,8 @@ function resolveClients(flag: string | true | undefined): ClientId[] | null {
 
 async function init(flags: Map<string, string | true>) {
 	const cwd = process.cwd();
-	if (!existsSync(join(cwd, "package.json"))) {
+	const isAProjectRoot = existsSync(join(cwd, "package.json"));
+	if (!isAProjectRoot) {
 		throw new Error("No package.json here. Run this from your app's root directory.");
 	}
 	const appName = ((await readJson(join(cwd, "package.json"))).name as string | undefined) ?? "my-app";
@@ -168,7 +178,8 @@ async function registeredClients(cwd: string): Promise<string[]> {
 	for (const id of Object.keys(CLIENTS) as ClientId[]) {
 		const spec = CLIENTS[id];
 		const path = spec.file(cwd);
-		if (!existsSync(path)) continue;
+		const clientHasAConfigHere = existsSync(path);
+		if (!clientHasAConfigHere) continue;
 		try {
 			const text = await readFile(path, "utf8");
 			const hit = spec.format === "toml" ? tomlTablePattern().test(text) : text.includes(`"${SERVER_KEY}"`);

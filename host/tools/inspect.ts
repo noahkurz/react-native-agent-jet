@@ -135,7 +135,8 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			while (true) {
 				const matches = await app.request("find", { target }, platform);
 				if (matches.length) return text(matches.map((node) => describeLine(node)).join("\n"));
-				if (Date.now() > deadline) throw new Error(`Timed out waiting for ${JSON.stringify(target)}`);
+				const deadlineHasPassed = Date.now() > deadline;
+				if (deadlineHasPassed) throw new Error(`Timed out waiting for ${JSON.stringify(target)}`);
 				await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 			}
 		},

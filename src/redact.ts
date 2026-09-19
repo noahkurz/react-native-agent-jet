@@ -80,7 +80,8 @@ function redactStructured(value: unknown, depth: number): unknown {
 export function redactBody(text: string): string {
 	if (!config.enabled) return text;
 	const trimmed = text.trim();
-	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+	const looksLikeJson = trimmed.startsWith("{") || trimmed.startsWith("[");
+	if (looksLikeJson) {
 		try {
 			return JSON.stringify(redactStructured(JSON.parse(trimmed), 0));
 		} catch {}
@@ -92,16 +93,18 @@ export function redactBody(text: string): string {
 
 export function redactUrl(url: string): string {
 	if (!config.enabled) return url;
-	const split = url.indexOf("?");
-	if (split === -1) return redactText(url);
-	const path = url.slice(0, split);
+	const queryStart = url.indexOf("?");
+	const hasQueryString = queryStart !== -1;
+	if (!hasQueryString) return redactText(url);
+	const path = url.slice(0, queryStart);
 	const query = url
-		.slice(split + 1)
+		.slice(queryStart + 1)
 		.split("&")
 		.map((pair) => {
-			const eq = pair.indexOf("=");
-			if (eq === -1) return pair;
-			const key = pair.slice(0, eq);
+			const separator = pair.indexOf("=");
+			const isKeyValuePair = separator !== -1;
+			if (!isKeyValuePair) return pair;
+			const key = pair.slice(0, separator);
 			return isSensitiveKey(key) ? `${key}=${REDACTED}` : pair;
 		})
 		.join("&");

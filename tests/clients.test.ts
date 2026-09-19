@@ -82,7 +82,8 @@ describe("global-scoped clients", () => {
 		process.env.HOME = home;
 		try {
 			const path = CLIENTS.codex.file(cwd);
-			if (path.startsWith(home)) {
+			const configLandedInTheFakeHome = path.startsWith(home);
+			if (configLandedInTheFakeHome) {
 				const first = await writeClientConfig("codex", cwd, pkgDir);
 				expect(first.status).toBe("written");
 				expect(read(path)).toContain("[mcp_servers.jet]");
@@ -104,7 +105,8 @@ describe("global-scoped clients", () => {
 		process.env.HOME = home;
 		try {
 			const path = CLIENTS.codex.file(cwd);
-			if (path.startsWith(home)) {
+			const configLandedInTheFakeHome = path.startsWith(home);
+			if (configLandedInTheFakeHome) {
 				mkdirSync(join(home, ".codex"), { recursive: true });
 				writeFileSync(path, '# [mcp_servers.jet]\n# command = "node"\n');
 				expect((await writeClientConfig("codex", cwd, pkgDir)).status).toBe("written");

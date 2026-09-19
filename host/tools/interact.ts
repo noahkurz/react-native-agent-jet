@@ -20,7 +20,8 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 			},
 		},
 		async ({ target, index, via, platform }) => {
-			if (via === "touch") {
+			const shouldUseRealTouch = via === "touch";
+			if (shouldUseRealTouch) {
 				const device = await deviceFor(app, platform);
 				const node = await locate(app, target, index, platform);
 				const point = center(node);
@@ -29,9 +30,11 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 					return text(`Tapped ${describeLine(node)} at (${point.x},${point.y})`);
 				}
 				const accessible = node.testID ? { id: node.testID } : node.label ? { label: node.label } : null;
-				if (!accessible || !device.tapAccessible)
+				const tapByAccessibility = device.tapAccessible;
+				if (!accessible || !tapByAccessibility) {
 					throw new Error(`Element has no on-screen frame: ${describeLine(node)}`);
-				await device.tapAccessible(accessible);
+				}
+				await tapByAccessibility(accessible);
 				return text(`Tapped ${describeLine(node)} by accessibility ${JSON.stringify(accessible)}`);
 			}
 			const pressed = await app.request("press", { target, index }, platform);
@@ -64,7 +67,8 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		},
 		async ({ text: value, target, submit, platform }) => {
 			const device = await deviceFor(app, platform);
-			if (!(await device.hasInput())) {
+			const canSendRealKeystrokes = await device.hasInput();
+			if (!canSendRealKeystrokes) {
 				if (!target) {
 					throw new Error(
 						`Real input is unavailable (${device.inputHint}); provide a target so text can be set through the JS bridge`,

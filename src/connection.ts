@@ -54,11 +54,13 @@ async function handle(socket: WebSocket, raw: string) {
 	} catch (error) {
 		response = { id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
-	if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(response));
+	const socketIsStillOpen = socket.readyState === WebSocket.OPEN;
+	if (socketIsStillOpen) socket.send(JSON.stringify(response));
 }
 
 export function connect(url: string) {
-	if (shared.stopped || shared.socket) return;
+	const alreadyConnectedOrShutDown = shared.stopped || Boolean(shared.socket);
+	if (alreadyConnectedOrShutDown) return;
 	let ws: WebSocket;
 	try {
 		ws = new WebSocket(url);

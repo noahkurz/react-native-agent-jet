@@ -108,13 +108,15 @@ function looksLikePath(name: string): boolean {
 
 export function navigateTo(name: string, params?: Record<string, unknown>): { route?: string } {
 	const expo = router();
-	if (expo && (looksLikePath(name) || !shared.options.navigationRef)) {
+	const expoRouterOwnsThisRoute = Boolean(expo) && (looksLikePath(name) || !shared.options.navigationRef);
+	if (expo && expoRouterOwnsThisRoute) {
 		expo.navigate(name);
 		return { route: currentRouteName() };
 	}
 	const nav = navigation();
 	const chain = chainToRoute(nav.getRootState() as RouteState | undefined, name);
-	if (chain && chain.length > 1) {
+	const routeIsNestedInAnotherNavigator = chain !== null && chain.length > 1;
+	if (routeIsNestedInAnotherNavigator) {
 		nav.navigate(chain[0]!, nestedParams(chain.slice(1), params));
 	} else {
 		nav.navigate(name, params);
@@ -126,12 +128,14 @@ export function goBack(): { route?: string } {
 	const nav = navigationOrNull();
 	const expo = router();
 	if (nav) {
-		if (!nav.canGoBack()) throw new Error("Cannot go back from the current route");
+		const hasSomewhereToGoBackTo = nav.canGoBack();
+		if (!hasSomewhereToGoBackTo) throw new Error("Cannot go back from the current route");
 		nav.goBack();
 		return { route: nav.getCurrentRoute()?.name };
 	}
 	if (expo) {
-		if (!expo.canGoBack()) throw new Error("Cannot go back from the current route");
+		const hasSomewhereToGoBackTo = expo.canGoBack();
+		if (!hasSomewhereToGoBackTo) throw new Error("Cannot go back from the current route");
 		expo.back();
 		return { route: currentRouteName() };
 	}

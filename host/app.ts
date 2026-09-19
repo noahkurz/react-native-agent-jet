@@ -39,7 +39,8 @@ export class AppConnection {
 		const host = process.env[ENV.host] ?? LOOPBACK_HOST;
 		const server = new WebSocketServer({ port, host });
 		this.server = server;
-		if (!LOOPBACK_HOSTS.has(host)) {
+		const reachableBeyondLoopback = !LOOPBACK_HOSTS.has(host);
+		if (reachableBeyondLoopback) {
 			process.stderr.write(
 				`[agent-jet-mcp] WARNING: listening on ${host}, which is reachable from your network. ` +
 					`There is no authentication, so anyone who can reach port ${port} can impersonate your app. ` +

@@ -10,7 +10,9 @@ export async function deviceFor(app: AppConnection, want?: Platform): Promise<De
 		return android;
 	}
 	if (platform === "ios") return ios;
-	if (await ios.name()) return ios;
-	if ((await hasAdb()) && (await android.name())) return android;
+	const iosSimulatorIsRunning = (await ios.name()) !== null;
+	if (iosSimulatorIsRunning) return ios;
+	const androidDeviceIsAttached = (await hasAdb()) && (await android.name()) !== null;
+	if (androidDeviceIsAttached) return android;
 	throw new Error("No app connected and no iOS Simulator or Android device found.");
 }

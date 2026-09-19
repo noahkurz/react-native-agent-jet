@@ -39,13 +39,15 @@ function formatArg(arg: unknown): string {
 
 function pushLog(entry: Omit<LogEntry, "seq" | "at">) {
 	logs.push({ seq: ++shared.seq, at: Date.now(), ...entry, message: redactText(entry.message) });
-	if (logs.length > LOG_LIMIT) logs.splice(0, logs.length - LOG_LIMIT);
+	const logsOverLimit = logs.length - LOG_LIMIT;
+	if (logsOverLimit > 0) logs.splice(0, logsOverLimit);
 }
 
 function pushNetwork(entry: Omit<NetworkEntry, "seq" | "at">): NetworkEntry {
 	const full = { seq: ++shared.seq, at: Date.now(), ...entry, url: redactUrl(entry.url) };
 	network.push(full);
-	if (network.length > NETWORK_LIMIT) network.splice(0, network.length - NETWORK_LIMIT);
+	const entriesOverLimit = network.length - NETWORK_LIMIT;
+	if (entriesOverLimit > 0) network.splice(0, entriesOverLimit);
 	return full;
 }
 
@@ -53,7 +55,8 @@ function truncate(value: unknown): string | undefined {
 	if (value === undefined || value === null) return undefined;
 	const raw = typeof value === "string" ? value : formatArg(value);
 	const text = redactBody(raw);
-	return text.length > BODY_LIMIT ? `${text.slice(0, BODY_LIMIT)}…` : text;
+	const exceedsBodyLimit = text.length > BODY_LIMIT;
+	return exceedsBodyLimit ? `${text.slice(0, BODY_LIMIT)}…` : text;
 }
 
 type ErrorUtilsLike = {
@@ -101,10 +104,11 @@ function installNetworkCapture() {
 				const entry = tracked.entry!;
 				entry.status = this.status;
 				entry.durationMs = Date.now() - tracked.startedAt;
-				if (this.status === 0) entry.error = "network error or aborted";
+				const requestNeverCompleted = this.status === 0;
+				if (requestNeverCompleted) entry.error = "network error or aborted";
 				try {
-					if (this.responseType === "" || this.responseType === "text")
-						entry.responseBody = truncate(this.responseText);
+					const responseIsReadableAsText = this.responseType === "" || this.responseType === "text";
+					if (responseIsReadableAsText) entry.responseBody = truncate(this.responseText);
 				} catch {}
 			});
 		}

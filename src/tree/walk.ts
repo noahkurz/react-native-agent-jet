@@ -30,7 +30,8 @@ function devtoolsHook(): DevtoolsHook | undefined {
 
 export function rootFibers(): Fiber[] {
 	const hook = devtoolsHook();
-	if (!hook?.renderers || typeof hook.getFiberRoots !== "function") return [];
+	const hookCanEnumerateRoots = Boolean(hook?.renderers) && typeof hook?.getFiberRoots === "function";
+	if (!hookCanEnumerateRoots) return [];
 	const roots: Fiber[] = [];
 	for (const rendererId of hook.renderers.keys()) {
 		for (const root of hook.getFiberRoots(rendererId)) {
@@ -69,7 +70,8 @@ const GENERIC_NAMES = new Set(["Anonymous", "ForwardRef", "Themed(Anonymous)", "
 export function nameOf(fiber: Pick<Fiber, "type">): string {
 	const raw = fiber.type;
 	if (typeof raw === "string") return raw;
-	if (!raw || (typeof raw !== "object" && typeof raw !== "function")) return "";
+	const canCarryAName = Boolean(raw) && (typeof raw === "object" || typeof raw === "function");
+	if (!canCarryAName) return "";
 	const type = raw as NamedType;
 	const tamagui = type.staticConfig?.componentName;
 	if (typeof raw === "function") {
@@ -77,7 +79,8 @@ export function nameOf(fiber: Pick<Fiber, "type">): string {
 	}
 	if (type.$$typeof === REACT_FORWARD_REF) {
 		const own = type.displayName || type.render?.displayName || type.render?.name;
-		return own && !GENERIC_NAMES.has(own) ? own : tamagui || own || "ForwardRef";
+		const ownNameIsMeaningful = Boolean(own) && !GENERIC_NAMES.has(own as string);
+		return ownNameIsMeaningful ? (own as string) : tamagui || own || "ForwardRef";
 	}
 	if (type.$$typeof === REACT_MEMO) {
 		return type.displayName || nameOf({ type: type.type });
@@ -91,14 +94,15 @@ function propsOf(fiber: Fiber): Props | null {
 }
 
 function isInactiveScreen(name: string, props: Props): boolean {
-	if (!name.startsWith(RN_SCREEN_PREFIX)) return false;
+	const isNavigatorScreen = name.startsWith(RN_SCREEN_PREFIX);
+	if (!isNavigatorScreen) return false;
 	return props.activityState === 0 || props.active === 0 || props.active === false;
 }
 
 function isHiddenSubtree(name: string, props: Props): boolean {
-	if (isInactiveScreen(name, props)) return true;
-	if (props.accessibilityElementsHidden === true || props["aria-hidden"] === true) return true;
-	if (props.importantForAccessibility === "no-hide-descendants") return true;
+	const hiddenFromAccessibility = props.accessibilityElementsHidden === true || props["aria-hidden"] === true;
+	const hiddenFromDescendants = props.importantForAccessibility === "no-hide-descendants";
+	if (isInactiveScreen(name, props) || hiddenFromAccessibility || hiddenFromDescendants) return true;
 	const style = props.style
 		? (StyleSheet.flatten(props.style as never) as { display?: string } | undefined)
 		: undefined;
@@ -154,11 +158,12 @@ function displayType(name: string, info: Described): string {
 }
 
 function addsInformation(info: Described, parent: SemanticNode): boolean {
-	if (info.isText || info.input || info.scrollInstance) return true;
-	if (info.testID && info.testID !== parent.node.testID) return true;
-	if (info.label && info.label !== parent.node.label) return true;
-	if (info.role && info.role !== parent.node.role) return true;
-	return info.pressable && info.onPress !== parent.onPress;
+	const isMeaningfulOnItsOwn = info.isText || info.input || Boolean(info.scrollInstance);
+	const hasItsOwnTestID = Boolean(info.testID) && info.testID !== parent.node.testID;
+	const hasItsOwnLabel = Boolean(info.label) && info.label !== parent.node.label;
+	const hasItsOwnRole = Boolean(info.role) && info.role !== parent.node.role;
+	const hasItsOwnPressHandler = info.pressable && info.onPress !== parent.onPress;
+	return isMeaningfulOnItsOwn || hasItsOwnTestID || hasItsOwnLabel || hasItsOwnRole || hasItsOwnPressHandler;
 }
 
 function lastSibling(fiber: Fiber): Fiber {
@@ -174,9 +179,11 @@ function visit(fiber: Fiber, parent: SemanticNode, all: SemanticNode[]): void {
 	}
 	const props = propsOf(fiber);
 	const name = nameOf(fiber);
-	if (props && isHiddenSubtree(name, props)) return;
-	if (name === RN_SCREEN_STACK && fiber.child) {
-		visit(lastSibling(fiber.child), parent, all);
+	const subtreeIsHidden = props !== null && isHiddenSubtree(name, props);
+	if (subtreeIsHidden) return;
+	const screenStackChild = name === RN_SCREEN_STACK ? fiber.child : null;
+	if (screenStackChild) {
+		visit(lastSibling(screenStackChild), parent, all);
 		return;
 	}
 	let current = parent;

@@ -32,16 +32,19 @@ function fabricUIManager(): FabricUIManager | undefined {
 
 function shadowNodeInstance(stateNode: FabricStateNode): Measurable | null {
 	const manager = fabricUIManager();
-	if (!manager || !stateNode.node) return null;
+	const shadowNode = stateNode.node;
+	if (!manager || !shadowNode) return null;
 	const instance: Measurable = {
-		measureInWindow: (callback) => manager.measureInWindow(stateNode.node, callback),
+		measureInWindow: (callback) => manager.measureInWindow(shadowNode, callback),
 	};
-	if (manager.dispatchCommand) {
-		instance.focus = () => manager.dispatchCommand!(stateNode.node, "focus", []);
-		instance.blur = () => manager.dispatchCommand!(stateNode.node, "blur", []);
+	const dispatchCommand = manager.dispatchCommand;
+	if (dispatchCommand) {
+		instance.focus = () => dispatchCommand(shadowNode, "focus", []);
+		instance.blur = () => dispatchCommand(shadowNode, "blur", []);
 	}
-	if (manager.setNativeProps) {
-		instance.setNativeProps = (props) => manager.setNativeProps!(stateNode.node, props);
+	const setNativeProps = manager.setNativeProps;
+	if (setNativeProps) {
+		instance.setNativeProps = (props) => setNativeProps(shadowNode, props);
 	}
 	return instance;
 }

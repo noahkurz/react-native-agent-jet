@@ -61,7 +61,8 @@ function fakeApp(
 async function until(condition: () => boolean, label: string, timeoutMs = 5_000): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	while (!condition()) {
-		if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
+		const deadlineHasPassed = Date.now() > deadline;
+		if (deadlineHasPassed) throw new Error(`Timed out waiting for ${label}`);
 		await new Promise((resolve) => setTimeout(resolve, 10));
 	}
 }
@@ -69,7 +70,8 @@ async function until(condition: () => boolean, label: string, timeoutMs = 5_000)
 function lanAddress(): string | null {
 	for (const addresses of Object.values(networkInterfaces())) {
 		for (const address of addresses ?? []) {
-			if (address.family === "IPv4" && !address.internal) return address.address;
+			const isRoutableIPv4 = address.family === "IPv4" && !address.internal;
+			if (isRoutableIPv4) return address.address;
 		}
 	}
 	return null;

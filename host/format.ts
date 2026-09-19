@@ -20,8 +20,9 @@ export function describeLine(node: UINode, frames = true): string {
 	}
 	if (node.pressable) parts.push("[press]");
 	if (node.scrollable) parts.push("[scroll]");
-	if (frames && node.frame) {
-		const { x, y, width, height } = node.frame;
+	const frameToReport = frames ? node.frame : undefined;
+	if (frameToReport) {
+		const { x, y, width, height } = frameToReport;
 		parts.push(`@(${x},${y} ${width}x${height})`);
 	}
 	if (node.visible === false) parts.push("[offscreen]");
@@ -44,7 +45,8 @@ export function filterTree(nodes: UINode[], opts: { interactive?: boolean; maxDe
 	for (const node of nodes) {
 		const atDepthLimit = opts.maxDepth !== undefined && depth + 1 >= opts.maxDepth;
 		const children = atDepthLimit ? [] : filterTree(node.children, opts, depth + 1);
-		if (opts.interactive && !isActionable(node) && children.length === 0) continue;
+		const nothingHereToActOn = Boolean(opts.interactive) && !isActionable(node) && children.length === 0;
+		if (nothingHereToActOn) continue;
 		result.push({ ...node, children });
 	}
 	return result;
@@ -94,7 +96,8 @@ export function diffTrees(previous: UINode[] | null, next: UINode[]): TreeDiff {
 function collectSubtrees(nodes: UINode[], ids: Set<number>): UINode[] {
 	const result: UINode[] = [];
 	for (const node of nodes) {
-		if (ids.has(node.id)) result.push(node);
+		const isOneOfTheSubtreeRoots = ids.has(node.id);
+		if (isOneOfTheSubtreeRoots) result.push(node);
 		else result.push(...collectSubtrees(node.children, ids));
 	}
 	return result;

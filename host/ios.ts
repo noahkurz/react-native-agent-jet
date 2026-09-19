@@ -51,7 +51,8 @@ export async function hasAxe(): Promise<boolean> {
 }
 
 async function axe(args: string[]): Promise<string> {
-	if (!(await hasAxe())) {
+	const axeIsInstalled = await hasAxe();
+	if (!axeIsInstalled) {
 		throw new Error(
 			"AXe is not installed. Install with `brew install cameroncooke/axe/axe` to enable real touches and typing.",
 		);

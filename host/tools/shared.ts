@@ -38,8 +38,12 @@ export const platformSchema = z
 	.describe("Which connected app to target when both iOS and Android are running. Defaults to the active one.");
 
 export function center(node: UINode): { x: number; y: number } | null {
-	if (!node.frame || node.visible === false) return null;
-	return { x: Math.round(node.frame.x + node.frame.width / 2), y: Math.round(node.frame.y + node.frame.height / 2) };
+	const tappableArea = node.visible === false ? undefined : node.frame;
+	if (!tappableArea) return null;
+	return {
+		x: Math.round(tappableArea.x + tappableArea.width / 2),
+		y: Math.round(tappableArea.y + tappableArea.height / 2),
+	};
 }
 
 export async function locate(

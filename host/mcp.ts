@@ -10,7 +10,8 @@ import { registerTools } from "./tools/index.js";
 
 const port = Number(process.env[ENV.port] ?? DEFAULT_PORT);
 const app = new AppConnection(port);
-if (await hasAdb()) await reversePort(port);
+const adbIsInstalled = await hasAdb();
+if (adbIsInstalled) await reversePort(port);
 const pkg = createRequire(import.meta.url)("../../package.json") as { name: string; version: string };
 const server = new McpServer({ name: pkg.name, version: pkg.version });
 registerTools(server, app);

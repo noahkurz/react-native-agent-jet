@@ -116,7 +116,8 @@ function tomlString(value: string): string {
 
 async function writeToml(path: string, serverPath: string): Promise<"written" | "present"> {
 	const existing = existsSync(path) ? await readFile(path, "utf8") : "";
-	if (tomlTablePattern().test(existing)) return "present";
+	const alreadyRegistered = tomlTablePattern().test(existing);
+	if (alreadyRegistered) return "present";
 	const block = `\n[mcp_servers.${SERVER_KEY}]\ncommand = "node"\nargs = [${tomlString(serverPath)}]\n`;
 	await mkdir(dirname(path), { recursive: true });
 	await writeFile(path, existing ? `${existing.trimEnd()}\n${block}` : block.trimStart());
