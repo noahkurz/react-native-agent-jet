@@ -32,8 +32,8 @@ async function hasSips(): Promise<boolean> {
  * Elsewhere (Windows/Linux) the native image is kept — callers report the real width.
  * Returns the resulting pixel width.
  */
-async function downscaleIfPossible(path: string, nativeWidth: number, targetWidth: number): Promise<number> {
-	targetWidth = Math.round(targetWidth);
+async function downscaleIfPossible(path: string, nativeWidth: number, requestedWidth: number): Promise<number> {
+	const targetWidth = Math.round(requestedWidth);
 	if (targetWidth >= nativeWidth) return nativeWidth;
 	if (!(await hasSips())) return nativeWidth;
 	try {
@@ -69,11 +69,11 @@ export type SizeRequest = {
  */
 export async function sizeScreenshot(path: string, request: SizeRequest = {}): Promise<Screenshot> {
 	const native = await pngWidth(path);
-	const derived = request.deviceScale ? native / request.deviceScale : null;
-	const pointWidth = request.pointWidth ?? derived;
-	const roundedPoints = pointWidth === null ? null : Math.round(pointWidth);
-	const target = request.pixelWidth ?? roundedPoints;
-	if (target === null) return { path, width: native, inPoints: false };
-	const width = await downscaleIfPossible(path, native, target);
-	return { path, width, inPoints: roundedPoints !== null && width === roundedPoints };
+	const fromScale = request.deviceScale ? native / request.deviceScale : null;
+	const pointWidth = request.pointWidth ?? fromScale;
+	const pointWidthInPixels = pointWidth === null ? null : Math.round(pointWidth);
+	const requested = request.pixelWidth ?? pointWidthInPixels;
+	if (requested === null) return { path, width: native, inPoints: false };
+	const width = await downscaleIfPossible(path, native, requested);
+	return { path, width, inPoints: pointWidthInPixels !== null && width === pointWidthInPixels };
 }
