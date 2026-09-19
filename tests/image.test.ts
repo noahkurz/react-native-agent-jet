@@ -82,6 +82,19 @@ describe("pngWidth", () => {
 		expect(await pngWidth(pngHeaderOnly(1320))).toBe(1320);
 	});
 
+	test("rejects a file whose IHDR chunk declares the wrong length", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
+		const path = join(dir, "bad-length.png");
+		const bytes = Buffer.alloc(64);
+		Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
+		bytes.writeUInt32BE(25, 8);
+		bytes.write("IHDR", 12, "ascii");
+		bytes.writeUInt32BE(1320, 16);
+		writeFileSync(path, bytes);
+		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
+		rmSync(dir, { recursive: true, force: true });
+	});
+
 	test("rejects a long file that forges the IHDR marker without the png signature", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "jet-png-"));
 		const path = join(dir, "forged.png");

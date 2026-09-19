@@ -6,6 +6,7 @@ const exec = promisify(execFile);
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const CHUNK_LENGTH_BYTES = 4;
+const IHDR_DATA_LENGTH = 13;
 const IHDR_MARKER_START = PNG_SIGNATURE.length + CHUNK_LENGTH_BYTES;
 const IHDR_MARKER_END = IHDR_MARKER_START + "IHDR".length;
 const IHDR_WIDTH_OFFSET = IHDR_MARKER_END;
@@ -16,7 +17,9 @@ export async function pngWidth(path: string): Promise<number> {
 	const startsWithSignature = buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
 	const marker = buffer.toString("ascii", IHDR_MARKER_START, IHDR_MARKER_END);
 	const isLongEnough = buffer.length >= IHDR_HEADER_LENGTH;
-	const isPng = isLongEnough && startsWithSignature && marker === "IHDR";
+	const declaresAnIhdrChunk =
+		isLongEnough && buffer.readUInt32BE(PNG_SIGNATURE.length) === IHDR_DATA_LENGTH && marker === "IHDR";
+	const isPng = startsWithSignature && declaresAnIhdrChunk;
 	if (!isPng) throw new Error("Not a PNG or unexpected header");
 
 	return buffer.readUInt32BE(IHDR_WIDTH_OFFSET);
