@@ -39,22 +39,30 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			description:
 				"Capture the device screen. When the app is connected the image is scaled so 1 image pixel = 1 point (dp on Android) and coordinates read off it can be passed straight to tap and swipe. The reply says which scale was used.",
 			inputSchema: {
-				width: z.number().int().optional().describe("Override the output width in pixels"),
+				width: z
+					.number()
+					.int()
+					.optional()
+					.describe("Force the output width in pixels. Coordinates are then pixels, not points."),
 				platform: platformSchema,
 			},
 		},
 		async ({ width, platform }) => {
-			const targetWidth = width ?? app.connectionFor(platform)?.device.windowWidth ?? null;
-			const shot = await (await deviceFor(app, platform)).screenshot(targetWidth);
+			// `width` is a pixel override; the app's windowWidth is a width in points. Only the second
+			// makes screenshot coordinates usable for taps, so they must not be conflated.
+			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
+			const shot = await (await deviceFor(app, platform)).screenshot(width ?? pointWidth);
+			const inPoints =
+				width === undefined ? shot.inPoints : pointWidth !== null && shot.width === Math.round(pointWidth);
 			const data = (await readFile(shot.path)).toString("base64");
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
 					{
 						type: "text",
-						text: shot.inPoints
+						text: inPoints
 							? `Saved to ${shot.path} (${shot.width}px wide, 1px = 1pt — safe for tap/swipe coordinates)`
-							: `Saved to ${shot.path} (${shot.width}px wide, native resolution — the device scale is unknown, so these are pixels, not points; connect the app or pass width to get point coordinates)`,
+							: `Saved to ${shot.path} (${shot.width}px wide — these are pixels, not points, so do not use them as tap coordinates)`,
 					},
 				],
 			};

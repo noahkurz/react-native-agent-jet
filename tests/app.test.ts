@@ -54,13 +54,19 @@ function fakeApp(port: number, platform: "ios" | "android", result: unknown = { 
 	});
 }
 
-const settle = () => new Promise((r) => setTimeout(r, 60));
+/** Wait for the registry to reach an expected state instead of sleeping a fixed amount. */
+async function until(condition: () => boolean, label: string, timeoutMs = 5_000): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!condition()) {
+		if (Date.now() > deadline) throw new Error(`Timed out waiting for ${label}`);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+}
 
 describe("binding", () => {
 	test("listens on loopback only, so nothing on the network can reach it", async () => {
 		const p = nextPort();
 		serve(p);
-		await settle();
 		// loopback accepts
 		await fakeApp(p, "ios");
 		// a non-loopback interface does not
@@ -83,7 +89,7 @@ describe("connection registry", () => {
 		const app = serve(p);
 		expect(app.connected).toBe(false);
 		await fakeApp(p, "ios");
-		await settle();
+		await until(() => app.connected, "the app to register");
 		expect(app.connected).toBe(true);
 		expect(app.device?.platform).toBe("ios");
 	});
@@ -93,7 +99,7 @@ describe("connection registry", () => {
 		const app = serve(p);
 		await fakeApp(p, "ios");
 		await fakeApp(p, "android");
-		await settle();
+		await until(() => app.all.length === 2, "both platforms to register");
 		expect(app.all.map((a) => a.platform).sort()).toEqual(["android", "ios"]);
 	});
 
@@ -101,9 +107,9 @@ describe("connection registry", () => {
 		const p = nextPort();
 		const app = serve(p);
 		await fakeApp(p, "ios");
-		await settle();
+		await until(() => app.all.length === 1, "the first app to register");
 		await fakeApp(p, "ios");
-		await settle();
+		await until(() => app.all.length === 1 && app.connected, "the replacement to register");
 		expect(app.all.filter((a) => a.platform === "ios")).toHaveLength(1);
 	});
 });
@@ -114,7 +120,7 @@ describe("platform routing", () => {
 		const app = serve(p);
 		await fakeApp(p, "ios", "from-ios");
 		await fakeApp(p, "android", "from-android");
-		await settle();
+		await until(() => app.all.length === 2, "both platforms to register");
 		expect(await app.request("ping", {}, "ios")).toBe("from-ios" as never);
 		expect(await app.request("ping", {}, "android")).toBe("from-android" as never);
 	});
@@ -123,7 +129,7 @@ describe("platform routing", () => {
 		const p = nextPort();
 		const app = serve(p);
 		await fakeApp(p, "ios");
-		await settle();
+		await until(() => app.connected, "the ios app to register");
 		await expect(app.request("ping", {}, "android")).rejects.toThrow(/No android app connected/);
 	}, 15_000);
 });
@@ -135,7 +141,7 @@ describe("select_platform is honoured strictly", () => {
 		const p = nextPort();
 		const app = serve(p);
 		await fakeApp(p, "ios", "from-ios");
-		await settle();
+		await until(() => app.connected, "the ios app to register");
 		app.preferred = "android";
 		expect(app.connected).toBe(false);
 		await expect(app.request("ping", {})).rejects.toThrow(/No android app connected/);
@@ -146,7 +152,7 @@ describe("select_platform is honoured strictly", () => {
 		const app = serve(p);
 		await fakeApp(p, "ios", "from-ios");
 		await fakeApp(p, "android", "from-android");
-		await settle();
+		await until(() => app.all.length === 2, "both platforms to register");
 		app.preferred = "ios";
 		expect(await app.request("ping", {})).toBe("from-ios" as never);
 	});

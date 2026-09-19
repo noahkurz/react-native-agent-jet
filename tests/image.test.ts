@@ -55,6 +55,14 @@ describe("sizeScreenshot", () => {
 		expect(shot.inPoints).toBe(true);
 	});
 
+	test("an explicit pixel width is honoured but is not a point width", async () => {
+		// regression: the screenshot tool passed an explicit `width` override through the same
+		// argument as the app's point width, so the result claimed 1px = 1pt and taps would miss.
+		const shot = await sizeScreenshot(png(1320), 800);
+		expect(shot.width).toBe(1320); // the stub cannot be resized, so it stays native
+		expect(shot.inPoints).toBe(false);
+	});
+
 	test("a target wider than the image is not upscaled and is not claimed as points", async () => {
 		const shot = await sizeScreenshot(png(400), 800);
 		expect(shot.width).toBe(400);
