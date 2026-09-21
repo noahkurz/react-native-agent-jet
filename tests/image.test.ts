@@ -310,6 +310,20 @@ describe("cropping", () => {
 		expect(readPng(path).samples).toEqual([blockValue(1, 1), blockValue(2, 1), blockValue(1, 2), blockValue(2, 2)]);
 	});
 
+	test("converts a crop's edges, not its size, so a fractional scale cannot shave off a pixel", async () => {
+		const pixelsPerPoint = ANDROID_DEVICE.scale;
+		const row = Array.from({ length: 21 }, (_, pixel) => pixel);
+		const path = greyscaleRow(row);
+		const crop = { x: 2, y: 0, width: 2, height: 1 };
+		const leftEdge = Math.round(crop.x * pixelsPerPoint);
+		const rightEdge = Math.round((crop.x + crop.width) * pixelsPerPoint);
+
+		const shot = await sizeScreenshot(path, { pointWidth: row.length / pixelsPerPoint, crop, preferredPixelWidth: 21 });
+
+		expect(shot.width).toBe(rightEdge - leftEdge);
+		expect(readPng(path).samples).toEqual(row.slice(leftEdge, rightEdge));
+	});
+
 	test("clamps a crop that runs past the edge of the screen", async () => {
 		const path = greyscaleGrid(GRID);
 		const shot = await sizeScreenshot(path, { pointWidth: 4, crop: { x: 3, y: 3, width: 10, height: 10 } });

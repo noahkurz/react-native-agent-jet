@@ -350,13 +350,10 @@ function clamp(value: number, low: number, high: number): number {
 function toPixels(region: Frame, pixelsPerPoint: number, header: Header): Frame {
 	const x = clamp(Math.round(region.x * pixelsPerPoint), 0, header.width - 1);
 	const y = clamp(Math.round(region.y * pixelsPerPoint), 0, header.height - 1);
+	const right = clamp(Math.round((region.x + region.width) * pixelsPerPoint), x + 1, header.width);
+	const bottom = clamp(Math.round((region.y + region.height) * pixelsPerPoint), y + 1, header.height);
 
-	return {
-		x,
-		y,
-		width: clamp(Math.round(region.width * pixelsPerPoint), 1, header.width - x),
-		height: clamp(Math.round(region.height * pixelsPerPoint), 1, header.height - y),
-	};
+	return { x, y, width: right - x, height: bottom - y };
 }
 
 export type Screenshot = {
