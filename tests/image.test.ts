@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
 import { DEFAULT_SCREENSHOT_SCALE, UNKNOWN_POINT_WIDTH_MAX_PX } from "../host/constants.js";
-import { pngWidth, sizeScreenshot } from "../host/image.js";
+import { sizeScreenshot } from "../host/image.js";
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const GRAYSCALE = 0;
@@ -164,9 +164,11 @@ function readPng(path: string): { width: number; height: number; samples: number
 	return { width, height, samples: [...pixels] };
 }
 
-describe("pngWidth", () => {
-	test("reads the width from the header with no external tools", async () => {
-		expect(await pngWidth(pngHeaderOnly(1320))).toBe(1320);
+describe("reading the header", () => {
+	test("reads the size from the header with no external tools", async () => {
+		const shot = await sizeScreenshot(pngHeaderOnly(1320), { pointWidth: 1320, scale: 1 });
+		expect(shot.width).toBe(1320);
+		expect(shot.inPoints).toBe(true);
 	});
 
 	test("rejects a file whose IHDR chunk declares the wrong length", async () => {
@@ -177,7 +179,7 @@ describe("pngWidth", () => {
 		bytes.write("IHDR", 12, "ascii");
 		bytes.writeUInt32BE(1320, 16);
 		writeFileSync(path, bytes);
-		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
+		await expect(sizeScreenshot(path)).rejects.toThrow(/Not a PNG/);
 	});
 
 	test("rejects a long file that forges the IHDR marker without the png signature", async () => {
@@ -186,14 +188,13 @@ describe("pngWidth", () => {
 		forged.write("IHDR", 12, "ascii");
 		forged.writeUInt32BE(1320, 16);
 		writeFileSync(path, forged);
-		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
 		await expect(sizeScreenshot(path, { pointWidth: 440 })).rejects.toThrow(/Not a PNG/);
 	});
 
 	test("rejects a file that is not a png rather than returning nonsense", async () => {
 		const path = fixture("not.png");
 		writeFileSync(path, "hello");
-		await expect(pngWidth(path)).rejects.toThrow(/Not a PNG/);
+		await expect(sizeScreenshot(path)).rejects.toThrow(/Not a PNG/);
 	});
 });
 
@@ -217,7 +218,7 @@ describe("resampling", () => {
 		const shot = await sizeScreenshot(path, { pointWidth: 440, scale: 1 });
 
 		expect(shot.width).toBe(440);
-		expect(await pngWidth(path)).toBe(440);
+		expect(readPng(path).width).toBe(440);
 		expect(readPng(path).height).toBe(13); // round(40 × 440 / 1320)
 	});
 
@@ -225,7 +226,7 @@ describe("resampling", () => {
 		const path = resizablePng(1320);
 		const shot = await sizeScreenshot(path, { preferredPixelWidth: 800 });
 		expect(shot.width).toBe(800);
-		expect(await pngWidth(path)).toBe(800);
+		expect(readPng(path).width).toBe(800);
 	});
 
 	test("leaves a PNG it cannot decode at its native size", async () => {

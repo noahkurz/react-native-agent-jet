@@ -7,15 +7,12 @@ const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0
 const CHUNK_LENGTH_BYTES = 4;
 const CHUNK_TYPE_BYTES = 4;
 const CHUNK_CRC_BYTES = 4;
+const CHUNK_HEADER_BYTES = CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES;
+
+/** The IHDR chunk always comes first: width, height, bit depth, colour type, then interlacing last. */
+const IHDR_DATA_START = PNG_SIGNATURE.length + CHUNK_HEADER_BYTES;
 const IHDR_DATA_LENGTH = 13;
-const IHDR_MARKER_START = PNG_SIGNATURE.length + CHUNK_LENGTH_BYTES;
-const IHDR_MARKER_END = IHDR_MARKER_START + "IHDR".length;
-const IHDR_WIDTH_OFFSET = IHDR_MARKER_END;
-const IHDR_HEADER_LENGTH = IHDR_WIDTH_OFFSET + 4 + 4;
-const IHDR_BIT_DEPTH_OFFSET = IHDR_WIDTH_OFFSET + 8;
-const IHDR_COLOR_TYPE_OFFSET = IHDR_BIT_DEPTH_OFFSET + 1;
-const IHDR_INTERLACE_OFFSET = IHDR_BIT_DEPTH_OFFSET + 4;
-const IHDR_DATA_END = IHDR_MARKER_END + IHDR_DATA_LENGTH;
+const IHDR_DIMENSIONS_BYTES = 8;
 
 /** Channels per pixel for the PNG colour types that carry one sample per channel. */
 const CHANNELS_BY_COLOR_TYPE: Record<number, number> = { 0: 1, 2: 3, 4: 2, 6: 4 };
@@ -47,45 +44,38 @@ type Header = {
 
 function readHeader(buffer: Buffer): Header {
 	const startsWithSignature = buffer.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
-	const marker = buffer.toString("ascii", IHDR_MARKER_START, IHDR_MARKER_END);
-	const isLongEnough = buffer.length >= IHDR_HEADER_LENGTH;
+	const carriesTheDimensions = buffer.length >= IHDR_DATA_START + IHDR_DIMENSIONS_BYTES;
 	const declaresAnIhdrChunk =
-		isLongEnough && buffer.readUInt32BE(PNG_SIGNATURE.length) === IHDR_DATA_LENGTH && marker === "IHDR";
-	const isPng = startsWithSignature && declaresAnIhdrChunk;
-	if (!isPng) throw new Error("Not a PNG or unexpected header");
+		carriesTheDimensions &&
+		buffer.readUInt32BE(PNG_SIGNATURE.length) === IHDR_DATA_LENGTH &&
+		buffer.toString("ascii", PNG_SIGNATURE.length + CHUNK_LENGTH_BYTES, IHDR_DATA_START) === "IHDR";
+	if (!startsWithSignature || !declaresAnIhdrChunk) throw new Error("Not a PNG or unexpected header");
 
-	return {
-		width: buffer.readUInt32BE(IHDR_WIDTH_OFFSET),
-		height: buffer.readUInt32BE(IHDR_WIDTH_OFFSET + 4),
-		format: readPixelFormat(buffer),
-	};
+	const ihdr = buffer.subarray(IHDR_DATA_START, IHDR_DATA_START + IHDR_DATA_LENGTH);
+	return { width: ihdr.readUInt32BE(0), height: ihdr.readUInt32BE(4), format: readPixelFormat(ihdr) };
 }
 
-function readPixelFormat(buffer: Buffer): PixelFormat | null {
-	const carriesTheWholeHeader = buffer.length >= IHDR_DATA_END;
-	if (!carriesTheWholeHeader) return null;
+function readPixelFormat(ihdr: Buffer): PixelFormat | null {
+	const isComplete = ihdr.length === IHDR_DATA_LENGTH;
+	if (!isComplete) return null;
 
-	const colorType = buffer.readUInt8(IHDR_COLOR_TYPE_OFFSET);
+	const colorType = ihdr[9]!;
 	const channels = CHANNELS_BY_COLOR_TYPE[colorType];
-	const isOneBytePerSample = buffer.readUInt8(IHDR_BIT_DEPTH_OFFSET) === SUPPORTED_BIT_DEPTH;
-	const isSequential = buffer.readUInt8(IHDR_INTERLACE_OFFSET) === NOT_INTERLACED;
+	const isOneBytePerSample = ihdr[8] === SUPPORTED_BIT_DEPTH;
+	const isSequential = ihdr[12] === NOT_INTERLACED;
 	if (!channels || !isOneBytePerSample || !isSequential) return null;
 
 	return { colorType, channels };
-}
-
-export async function pngWidth(path: string): Promise<number> {
-	return readHeader(await readFile(path)).width;
 }
 
 function compressedPixels(buffer: Buffer): Buffer {
 	const parts: Buffer[] = [];
 	let offset = PNG_SIGNATURE.length;
 
-	while (offset + CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES <= buffer.length) {
+	while (offset + CHUNK_HEADER_BYTES <= buffer.length) {
 		const length = buffer.readUInt32BE(offset);
-		const type = buffer.toString("ascii", offset + CHUNK_LENGTH_BYTES, offset + CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES);
-		const start = offset + CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES;
+		const type = buffer.toString("ascii", offset + CHUNK_LENGTH_BYTES, offset + CHUNK_HEADER_BYTES);
+		const start = offset + CHUNK_HEADER_BYTES;
 		const end = start + length;
 		if (end > buffer.length) break;
 
@@ -289,7 +279,7 @@ function encodePng(pixels: Buffer, width: number, height: number, format: PixelF
  * interlaced one, a truncated one) so the caller can fall back to the untouched capture
  * rather than failing the screenshot.
  */
-async function render(
+async function writeResized(
 	path: string,
 	buffer: Buffer,
 	header: Header,
@@ -324,12 +314,16 @@ async function render(
  * cropping to a full-width element would quietly become the expensive option.
  */
 function defaultScale(region: Frame, screen: Frame, appIsConnected: boolean): number {
-	const isWholeScreen = region.width === screen.width && region.height === screen.height;
-	if (isWholeScreen) return appIsConnected ? DEFAULT_SCREENSHOT_SCALE : FULL_DETAIL_SCALE;
+	if (coversTheScreen(region, screen)) return appIsConnected ? DEFAULT_SCREENSHOT_SCALE : FULL_DETAIL_SCALE;
 
 	const budget = screen.width * screen.height * DEFAULT_SCREENSHOT_SCALE ** 2;
 	const atFullDetail = region.width * region.height;
 	return atFullDetail <= budget ? FULL_DETAIL_SCALE : Math.sqrt(budget / atFullDetail);
+}
+
+/** A crop is always inside the screen, so matching its size means showing all of it. */
+function coversTheScreen(region: Frame, screen: Frame): boolean {
+	return region.width === screen.width && region.height === screen.height;
 }
 
 function wholeImage(header: Header): Frame {
@@ -395,18 +389,7 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 	const appIsConnected = request.pointWidth != null;
 	const fromScale = request.deviceScale ? header.width / request.deviceScale : null;
 	const pointWidth = request.pointWidth ?? fromScale;
-
-	// Neither the app nor the device placed the screen, so points are unknown and there is
-	// nothing to scale or crop against. Cap the width generously instead: `tree` needs the
-	// app too, so this is the case where the image is the only way to read the screen.
-	// `scale` then falls back to a fraction of the capture itself, so scale:1 still means
-	// full detail as the tool promises.
-	if (pointWidth === null) {
-		const nativeFraction = request.scale == null ? null : Math.round(header.width * request.scale);
-		const requested = request.preferredPixelWidth ?? nativeFraction ?? UNKNOWN_POINT_WIDTH_MAX_PX;
-		const width = await render(path, buffer, header, wholeImage(header), clamp(requested, 1, header.width));
-		return { path, width: width ?? header.width, inPoints: false, region: null, cropped: false };
-	}
+	if (pointWidth === null) return sizeWithoutPoints(path, buffer, header, request);
 
 	const pixelsPerPoint = header.width / pointWidth;
 	const screen: Frame = { x: 0, y: 0, width: pointWidth, height: header.height / pixelsPerPoint };
@@ -416,9 +399,8 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 	const scale = request.scale ?? defaultScale(region, screen, appIsConnected);
 	const source = toPixels(region, pixelsPerPoint, header);
 	const requested = request.preferredPixelWidth ?? Math.round(region.width * scale);
-	const targetWidth = clamp(requested, 1, source.width);
+	const width = await writeResized(path, buffer, header, source, clamp(requested, 1, source.width));
 
-	const width = await render(path, buffer, header, source, targetWidth);
 	// Neither the crop nor the resize happened if we could not decode, so describe the
 	// untouched capture rather than a region the image does not actually show.
 	if (width === null) {
@@ -426,6 +408,30 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 		return { path, width: header.width, inPoints, region: screen, cropped: false };
 	}
 
-	const cropped = region.width !== screen.width || region.height !== screen.height;
-	return { path, width, inPoints: width === Math.round(region.width), region, cropped };
+	return {
+		path,
+		width,
+		inPoints: width === Math.round(region.width),
+		region,
+		cropped: !coversTheScreen(region, screen),
+	};
+}
+
+/**
+ * Neither the app nor the device placed the screen, so points are unknown and there is
+ * nothing to scale or crop against. Cap the width generously instead: `tree` needs the
+ * app too, so this is the case where the image is the only way to read the screen.
+ * `scale` then means a fraction of the capture itself, so scale:1 still means full detail
+ * as the tool promises.
+ */
+async function sizeWithoutPoints(
+	path: string,
+	buffer: Buffer,
+	header: Header,
+	request: SizeRequest,
+): Promise<Screenshot> {
+	const nativeFraction = request.scale == null ? null : Math.round(header.width * request.scale);
+	const requested = request.preferredPixelWidth ?? nativeFraction ?? UNKNOWN_POINT_WIDTH_MAX_PX;
+	const width = await writeResized(path, buffer, header, wholeImage(header), clamp(requested, 1, header.width));
+	return { path, width: width ?? header.width, inPoints: false, region: null, cropped: false };
 }
