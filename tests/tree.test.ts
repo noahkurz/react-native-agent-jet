@@ -205,6 +205,56 @@ describe("collapsing wrappers", () => {
 		expect(root.children).toHaveLength(0);
 	});
 
+	test("merges an inner pressable that repeats the outer's label, keeping the outer handler", () => {
+		const outer = () => {};
+		const inner = () => {};
+		const label = "Home, tab, 1 of 3";
+		mountTree(
+			fiber({}, [
+				host("View", { onPress: outer, accessibilityLabel: label }, [
+					host("View", { onPress: inner, accessibilityLabel: label }, [host("RCTText", {}, [textNode("Home")])]),
+				]),
+			]),
+		);
+		const { roots, all } = snapshot();
+		expect(roots).toHaveLength(1);
+		expect(roots[0]!.text).toBe("Home");
+		expect(roots[0]!.children).toHaveLength(0);
+		expect(all.find((semantic) => semantic.node === roots[0])!.onPress).toBe(outer);
+	});
+
+	test("merges an inner pressable that repeats the outer's role, as Android tab bars do", () => {
+		mountTree(
+			fiber({}, [
+				host("View", { onPress: () => {}, role: "tab" }, [
+					host("View", { onPress: () => {}, role: "tab" }, [host("RCTText", {}, [textNode("Home")])]),
+				]),
+			]),
+		);
+		const { roots } = snapshot();
+		expect(roots).toHaveLength(1);
+		expect(roots[0]!.role).toBe("tab");
+		expect(roots[0]!.text).toBe("Home");
+		expect(roots[0]!.children).toHaveLength(0);
+	});
+
+	test("hoists an input out of a wrapper that only repeats its label", () => {
+		const Wrapper = () => null;
+		Object.defineProperty(Wrapper, "name", { value: "TextInput" });
+		mountTree(
+			fiber({}, [
+				fiber({ type: Wrapper, memoizedProps: { accessibilityLabel: "filter" } }, [
+					host("RCTSinglelineTextInputView", { accessibilityLabel: "filter", placeholder: "Filter posts" }),
+				]),
+			]),
+		);
+		const { roots } = snapshot();
+		expect(roots).toHaveLength(1);
+		expect(roots[0]!.input).toBe(true);
+		expect(roots[0]!.placeholder).toBe("Filter posts");
+		expect(roots[0]!.label).toBe("filter");
+	});
+
 	test("never absorbs a child that is an input", () => {
 		const shared = () => {};
 		mountTree(
@@ -233,6 +283,12 @@ describe("node identity", () => {
 });
 
 describe("nameOf", () => {
+	test("strips the Animated() wrapper from a component name", () => {
+		const Text = () => null;
+		Object.defineProperty(Text, "displayName", { value: "Animated(Text)" });
+		expect(nameOf({ type: Text })).toBe("Text");
+	});
+
 	test("unwraps forwardRef and memo, and prefers a Tamagui component name", () => {
 		expect(nameOf({ type: "RCTView" })).toBe("RCTView");
 		expect(nameOf({ type: function Checkout() {} })).toBe("Checkout");

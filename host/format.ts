@@ -12,7 +12,8 @@ export function describeLine(node: UINode, frames = true): string {
 	const parts = [`#${node.id}`, node.type];
 	if (node.testID) parts.push(`testID=${quote(node.testID)}`);
 	if (node.label) parts.push(`label=${quote(node.label)}`);
-	if (node.role) parts.push(`role=${node.role}`);
+	const roleSaysMoreThanPress = node.role && !(node.role === "button" && node.pressable);
+	if (roleSaysMoreThanPress) parts.push(`role=${node.role}`);
 	if (node.text) parts.push(quote(node.text));
 
 	if (node.input) {
@@ -45,6 +46,16 @@ function isActionable(node: UINode): boolean {
 	return node.pressable === true || node.input === true || node.scrollable === true;
 }
 
+/** The text interactive mode would drop from under a pressable, so a list row still says what it is. */
+function droppedText(node: UINode): string {
+	const fragments = node.children
+		.filter((child) => !isActionable(child))
+		.flatMap((child) => [child.text ?? "", droppedText(child)])
+		.filter(Boolean);
+	// Tab bars render an icon twice for its active and inactive states; once is enough here.
+	return fragments.filter((fragment, index) => fragment !== fragments[index - 1]).join(" ");
+}
+
 export function filterTree(nodes: UINode[], opts: { interactive?: boolean; maxDepth?: number }, depth = 0): UINode[] {
 	const askedForNoLevelsAtAll = opts.maxDepth !== undefined && opts.maxDepth < 1;
 	if (askedForNoLevelsAtAll) return [];
@@ -56,7 +67,9 @@ export function filterTree(nodes: UINode[], opts: { interactive?: boolean; maxDe
 		const nothingHereToActOn = Boolean(opts.interactive) && !isActionable(node) && children.length === 0;
 		if (nothingHereToActOn) continue;
 
-		result.push({ ...node, children });
+		const needsASummary = Boolean(opts.interactive) && node.pressable === true && !node.text && !node.label;
+		const text = needsASummary ? droppedText(node) || undefined : node.text;
+		result.push({ ...node, ...(text !== undefined && { text }), children });
 	}
 
 	return result;
