@@ -24,7 +24,6 @@ import {
 } from "../format.js";
 import { type ToolContext, locate, platformSchema, shortenStack, targetSchema, text } from "./shared.js";
 
-/** Widens a frame on every side, so a cropped element keeps some of its surroundings. */
 function grow(frame: Frame, margin: number): Frame {
 	return {
 		x: frame.x - margin,

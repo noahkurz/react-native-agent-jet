@@ -9,16 +9,17 @@ const CHUNK_TYPE_BYTES = 4;
 const CHUNK_CRC_BYTES = 4;
 const CHUNK_HEADER_BYTES = CHUNK_LENGTH_BYTES + CHUNK_TYPE_BYTES;
 
-/** The IHDR chunk always comes first: width, height, bit depth, colour type, then interlacing last. */
 const IHDR_DATA_START = PNG_SIGNATURE.length + CHUNK_HEADER_BYTES;
 const IHDR_DATA_LENGTH = 13;
-const IHDR_DIMENSIONS_BYTES = 8;
+const IHDR = { width: 0, height: 4, bitDepth: 8, colorType: 9, interlace: 12 };
+const IHDR_DIMENSIONS_BYTES = IHDR.bitDepth;
 
-/** Channels per pixel for the PNG colour types that carry one sample per channel. */
-const CHANNELS_BY_COLOR_TYPE: Record<number, number> = { 0: 1, 2: 3, 4: 2, 6: 4 };
-
-/** Colour types whose last channel is alpha: greyscale+alpha and RGBA. */
-const HAS_ALPHA = new Set([4, 6]);
+const GREYSCALE = 0;
+const RGB = 2;
+const GREYSCALE_ALPHA = 4;
+const RGBA = 6;
+const CHANNELS_BY_COLOR_TYPE: Record<number, number> = { [GREYSCALE]: 1, [RGB]: 3, [GREYSCALE_ALPHA]: 2, [RGBA]: 4 };
+const HAS_ALPHA = new Set([GREYSCALE_ALPHA, RGBA]);
 
 const OPAQUE = 255;
 const SUPPORTED_BIT_DEPTH = 8;
@@ -38,7 +39,7 @@ type PixelFormat = {
 type Header = {
 	width: number;
 	height: number;
-	/** Set only for the files we can decode: 8-bit, non-interlaced, not palette-indexed. */
+	/** Null for files this module cannot decode: palette-indexed, interlaced, or not 8-bit. */
 	format: PixelFormat | null;
 };
 
@@ -52,17 +53,21 @@ function readHeader(buffer: Buffer): Header {
 	if (!startsWithSignature || !declaresAnIhdrChunk) throw new Error("Not a PNG or unexpected header");
 
 	const ihdr = buffer.subarray(IHDR_DATA_START, IHDR_DATA_START + IHDR_DATA_LENGTH);
-	return { width: ihdr.readUInt32BE(0), height: ihdr.readUInt32BE(4), format: readPixelFormat(ihdr) };
+	return {
+		width: ihdr.readUInt32BE(IHDR.width),
+		height: ihdr.readUInt32BE(IHDR.height),
+		format: readPixelFormat(ihdr),
+	};
 }
 
 function readPixelFormat(ihdr: Buffer): PixelFormat | null {
 	const isComplete = ihdr.length === IHDR_DATA_LENGTH;
 	if (!isComplete) return null;
 
-	const colorType = ihdr[9]!;
+	const colorType = ihdr[IHDR.colorType]!;
 	const channels = CHANNELS_BY_COLOR_TYPE[colorType];
-	const isOneBytePerSample = ihdr[8] === SUPPORTED_BIT_DEPTH;
-	const isSequential = ihdr[12] === NOT_INTERLACED;
+	const isOneBytePerSample = ihdr[IHDR.bitDepth] === SUPPORTED_BIT_DEPTH;
+	const isSequential = ihdr[IHDR.interlace] === NOT_INTERLACED;
 	if (!channels || !isOneBytePerSample || !isSequential) return null;
 
 	return { colorType, channels };
@@ -114,7 +119,6 @@ function predict(filter: number, left: number, up: number, upLeft: number): numb
 	}
 }
 
-/** Reverses the per-scanline filters, leaving one byte per sample in row-major order. */
 function unfilter(raw: Buffer, width: number, height: number, channels: number): Buffer {
 	const stride = width * channels;
 	const expected = (stride + 1) * height;
@@ -238,8 +242,7 @@ function chunk(type: string, data: Buffer): Buffer {
 	return Buffer.concat([length, body, crc]);
 }
 
-/** Paeth filters every row; it costs nothing to write and compresses UI gradients well. */
-function filterRows(pixels: Buffer, width: number, height: number, channels: number): Buffer {
+function paethFilterRows(pixels: Buffer, width: number, height: number, channels: number): Buffer {
 	const stride = width * channels;
 	const raw = Buffer.alloc((stride + 1) * height);
 
@@ -268,17 +271,23 @@ function encodePng(pixels: Buffer, width: number, height: number, format: PixelF
 	return Buffer.concat([
 		PNG_SIGNATURE,
 		chunk("IHDR", header),
-		chunk("IDAT", deflateSync(filterRows(pixels, width, height, format.channels))),
+		chunk("IDAT", deflateSync(paethFilterRows(pixels, width, height, format.channels))),
 		chunk("IEND", Buffer.alloc(0)),
 	]);
 }
 
-/**
- * Writes `source` — a region of the image, in pixels — back to the file at `targetWidth`,
- * and returns that width. Returns null for anything we cannot decode (a palette PNG, an
- * interlaced one, a truncated one) so the caller can fall back to the untouched capture
- * rather than failing the screenshot.
- */
+async function writeAtomically(path: string, bytes: Buffer): Promise<void> {
+	const draft = `${path}.partial`;
+	try {
+		await writeFile(draft, bytes);
+		await rename(draft, path);
+	} catch (error) {
+		await rm(draft, { force: true, recursive: true }).catch(() => {});
+		throw error;
+	}
+}
+
+/** Returns the written width, or null when the file could not be decoded and was left untouched. */
 async function writeResized(
 	path: string,
 	buffer: Buffer,
@@ -291,18 +300,13 @@ async function writeResized(
 	if (alreadyRight) return header.width;
 	if (!header.format) return null;
 
-	// Built beside the capture and swapped in, so a failure part way through leaves the
-	// original readable rather than a truncated file the caller would go on to send.
-	const partial = `${path}.partial`;
 	try {
 		const pixels = unfilter(inflateSync(compressedPixels(buffer)), header.width, header.height, header.format.channels);
 		const targetHeight = Math.max(1, Math.round((source.height * targetWidth) / source.width));
 		const resized = resample(pixels, header.width, header.format, source, targetWidth, targetHeight);
-		await writeFile(partial, encodePng(resized, targetWidth, targetHeight, header.format));
-		await rename(partial, path);
+		await writeAtomically(path, encodePng(resized, targetWidth, targetHeight, header.format));
 		return targetWidth;
 	} catch {
-		await rm(partial, { force: true, recursive: true }).catch(() => {});
 		return null;
 	}
 }
@@ -321,7 +325,6 @@ function defaultScale(region: Frame, screen: Frame, appIsConnected: boolean): nu
 	return atFullDetail <= budget ? FULL_DETAIL_SCALE : Math.sqrt(budget / atFullDetail);
 }
 
-/** A crop is always inside the screen, so matching its size means showing all of it. */
 function coversTheScreen(region: Frame, screen: Frame): boolean {
 	return region.width === screen.width && region.height === screen.height;
 }
@@ -330,7 +333,6 @@ function wholeImage(header: Header): Frame {
 	return { x: 0, y: 0, width: header.width, height: header.height };
 }
 
-/** The overlap of two rectangles, or null when they do not overlap at all. */
 function intersect(one: Frame, other: Frame): Frame | null {
 	const x = Math.max(one.x, other.x);
 	const y = Math.max(one.y, other.y);
@@ -345,7 +347,6 @@ function clamp(value: number, low: number, high: number): number {
 	return Math.min(Math.max(value, low), high);
 }
 
-/** Converts a region in points to the pixels it covers, kept inside the image. */
 function toPixels(region: Frame, pixelsPerPoint: number, header: Header): Frame {
 	const x = clamp(Math.round(region.x * pixelsPerPoint), 0, header.width - 1);
 	const y = clamp(Math.round(region.y * pixelsPerPoint), 0, header.height - 1);
@@ -371,11 +372,13 @@ export type Screenshot = {
 
 export type SizeRequest = {
 	preferredPixelWidth?: number | null;
+	/** The connected app's window width in points; absent when no app is connected. */
 	pointWidth?: number | null;
 	/** Fraction of the region's point width to render at. See defaultScale for the default. */
 	scale?: number | null;
 	/** Region to keep, in points. Ignored when the screen's point size is unknown. */
 	crop?: Frame | null;
+	/** Pixels per point as the device reports it, which adb knows with or without an app. */
 	deviceScale?: number;
 };
 
@@ -383,12 +386,9 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 	const buffer = await readFile(path);
 	const header = readHeader(buffer);
 
-	// `pointWidth` is the app reporting its own window; `deviceScale` is the device's
-	// density, which adb knows whether or not the app is running. So the app is connected
-	// only when the first is set, even though the second can still place the screen.
 	const appIsConnected = request.pointWidth != null;
-	const fromScale = request.deviceScale ? header.width / request.deviceScale : null;
-	const pointWidth = request.pointWidth ?? fromScale;
+	const pointWidthFromDensity = request.deviceScale ? header.width / request.deviceScale : null;
+	const pointWidth = request.pointWidth ?? pointWidthFromDensity;
 	if (pointWidth === null) return sizeWithoutPoints(path, buffer, header, request);
 
 	const pixelsPerPoint = header.width / pointWidth;
@@ -400,13 +400,7 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 	const source = toPixels(region, pixelsPerPoint, header);
 	const requested = request.preferredPixelWidth ?? Math.round(region.width * scale);
 	const width = await writeResized(path, buffer, header, source, clamp(requested, 1, source.width));
-
-	// Neither the crop nor the resize happened if we could not decode, so describe the
-	// untouched capture rather than a region the image does not actually show.
-	if (width === null) {
-		const inPoints = header.width === Math.round(screen.width);
-		return { path, width: header.width, inPoints, region: screen, cropped: false };
-	}
+	if (width === null) return untouchedCapture(path, header, screen);
 
 	return {
 		path,
@@ -417,12 +411,14 @@ export async function sizeScreenshot(path: string, request: SizeRequest = {}): P
 	};
 }
 
+function untouchedCapture(path: string, header: Header, screen: Frame): Screenshot {
+	const inPoints = header.width === Math.round(screen.width);
+	return { path, width: header.width, inPoints, region: screen, cropped: false };
+}
+
 /**
- * Neither the app nor the device placed the screen, so points are unknown and there is
- * nothing to scale or crop against. Cap the width generously instead: `tree` needs the
- * app too, so this is the case where the image is the only way to read the screen.
- * `scale` then means a fraction of the capture itself, so scale:1 still means full detail
- * as the tool promises.
+ * With no points there is nothing to scale or crop against, and with no app there is no
+ * `tree` to read text from, so the image is capped generously rather than halved.
  */
 async function sizeWithoutPoints(
 	path: string,

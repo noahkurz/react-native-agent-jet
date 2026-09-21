@@ -103,12 +103,29 @@ function rgbaPng(pixels: number[][], width: number): string {
 	return writePng(Buffer.from(pixels.flat()), width, pixels.length / width, RGBA);
 }
 
+const BLOCK_SIZE = 2;
+
+/** The value every pixel of the 2×2 block at block coordinates (column, row) holds. */
+function blockValue(column: number, row: number): number {
+	return (row * 4 + column) * 10;
+}
+
 /** Each 2×2 block holds one value, so a 2:1 downscale should reproduce the blocks. */
 function blocks(size: number): number[][] {
 	return Array.from({ length: size }, (_, y) =>
-		Array.from({ length: size }, (_, x) => (Math.floor(y / 2) * 4 + Math.floor(x / 2)) * 10),
+		Array.from({ length: size }, (_, x) => blockValue(Math.floor(x / BLOCK_SIZE), Math.floor(y / BLOCK_SIZE))),
 	);
 }
+
+/** The rounded mean of samples, each weighted by how much of it an output pixel covers. */
+function boxAverage(...covered: Array<[sample: number, coverage: number]>): number {
+	const total = covered.reduce((sum, [sample, coverage]) => sum + sample * coverage, 0);
+	const coverage = covered.reduce((sum, [, weight]) => sum + weight, 0);
+	return Math.round(total / coverage);
+}
+
+const ANDROID_DEVICE = { pixelWidth: 1080, scale: 2.625 };
+const ANDROID_POINT_WIDTH = ANDROID_DEVICE.pixelWidth / ANDROID_DEVICE.scale;
 
 function paeth(left: number, up: number, upLeft: number): number {
 	const estimate = left + up - upLeft;
@@ -200,17 +217,15 @@ describe("reading the header", () => {
 
 describe("resampling", () => {
 	test("averages the samples each output pixel covers instead of dropping columns", async () => {
-		// Nearest-neighbour would pick 0 and 200; the averages are 50 and 228.
 		const path = greyscaleRow([0, 100, 200, 255]);
 		await sizeScreenshot(path, { preferredPixelWidth: 2 });
-		expect(readPng(path).samples).toEqual([50, 228]);
+		expect(readPng(path).samples).toEqual([boxAverage([0, 1], [100, 1]), boxAverage([200, 1], [255, 1])]);
 	});
 
-	test("weights partly covered samples when the ratio is not a whole number", async () => {
-		// 3 → 2 is a 1.5:1 box: the middle sample is split evenly between both outputs.
+	test("splits a sample straddling two output pixels between them by coverage", async () => {
 		const path = greyscaleRow([0, 150, 210]);
 		await sizeScreenshot(path, { preferredPixelWidth: 2 });
-		expect(readPng(path).samples).toEqual([50, 190]);
+		expect(readPng(path).samples).toEqual([boxAverage([0, 1], [150, 0.5]), boxAverage([150, 0.5], [210, 1])]);
 	});
 
 	test("keeps the aspect ratio and writes a PNG that reads back at the new size", async () => {
@@ -284,12 +299,15 @@ describe("cropping", () => {
 	});
 
 	test("maps the crop from points to pixels when the screen is denser than its points", async () => {
-		// 8px across 4pt is 2 pixels per point, so points 1–3 are pixels 2–6.
+		const pixelsPerPoint = BLOCK_SIZE;
 		const path = greyscaleGrid(blocks(8));
-		const shot = await sizeScreenshot(path, { pointWidth: 4, crop: { x: 1, y: 1, width: 2, height: 2 } });
+		const shot = await sizeScreenshot(path, {
+			pointWidth: 8 / pixelsPerPoint,
+			crop: { x: 1, y: 1, width: 2, height: 2 },
+		});
 
 		expect(shot.width).toBe(2);
-		expect(readPng(path).samples).toEqual([50, 60, 90, 100]);
+		expect(readPng(path).samples).toEqual([blockValue(1, 1), blockValue(2, 1), blockValue(1, 2), blockValue(2, 2)]);
 	});
 
 	test("clamps a crop that runs past the edge of the screen", async () => {
@@ -332,14 +350,9 @@ describe("cropping", () => {
 
 describe("alpha", () => {
 	test("averages colour premultiplied by alpha, so transparent pixels do not tint their neighbours", async () => {
-		// Averaging the raw samples would drag the red halfway to green.
-		const path = rgbaPng(
-			[
-				[255, 0, 0, 255],
-				[0, 255, 0, 0],
-			],
-			2,
-		);
+		const opaqueRed = [255, 0, 0, 255];
+		const transparentGreen = [0, 255, 0, 0];
+		const path = rgbaPng([opaqueRed, transparentGreen], 2);
 		await sizeScreenshot(path, { preferredPixelWidth: 1 });
 		expect(readPng(path).samples).toEqual([255, 0, 0, 128]);
 	});
@@ -371,17 +384,17 @@ describe("sizeScreenshot", () => {
 	});
 
 	test("halves against a fractional Android device scale once the app is connected", async () => {
-		// 1080px at 2.625 is 411.43pt, so half of it rounds to 206.
-		const shot = await sizeScreenshot(resizablePng(1080), { pointWidth: 411.4285714285714, deviceScale: 2.625 });
-		expect(shot.width).toBe(206);
+		const shot = await sizeScreenshot(resizablePng(ANDROID_DEVICE.pixelWidth), {
+			pointWidth: ANDROID_POINT_WIDTH,
+			deviceScale: ANDROID_DEVICE.scale,
+		});
+		expect(shot.width).toBe(Math.round(ANDROID_POINT_WIDTH * DEFAULT_SCREENSHOT_SCALE));
 		expect(shot.inPoints).toBe(false);
 	});
 
-	test("shows full detail when adb can place the screen but no app is connected", async () => {
-		// adb still reports the density, so the points are known -- but with no app there
-		// is no `tree` to read the text from, so halving it would lose the only copy.
-		const shot = await sizeScreenshot(resizablePng(1080), { deviceScale: 2.625 });
-		expect(shot.width).toBe(411);
+	test("shows full detail, not half, when only adb places the screen and no tree can supply the text", async () => {
+		const shot = await sizeScreenshot(resizablePng(ANDROID_DEVICE.pixelWidth), { deviceScale: ANDROID_DEVICE.scale });
+		expect(shot.width).toBe(Math.round(ANDROID_POINT_WIDTH));
 		expect(shot.inPoints).toBe(true);
 	});
 
@@ -403,26 +416,32 @@ describe("sizeScreenshot", () => {
 	});
 
 	test("falls back to the native image when the resize fails, without claiming points", async () => {
-		const shot = await sizeScreenshot(pngHeaderOnly(1080), { pointWidth: 411.4285714285714, deviceScale: 2.625 });
+		const shot = await sizeScreenshot(pngHeaderOnly(ANDROID_DEVICE.pixelWidth), {
+			pointWidth: ANDROID_POINT_WIDTH,
+			deviceScale: ANDROID_DEVICE.scale,
+		});
 		expect(shot.width).toBe(1080);
 		expect(shot.inPoints).toBe(false);
 	});
 
-	test("leaves the capture readable when the resize cannot be written", async () => {
+	test("leaves the capture readable when the resized file cannot be written", async () => {
 		const path = resizablePng(1320);
 		const before = readFileSync(path);
-		// A directory where the temporary file must go makes the write fail, not the decode.
-		mkdirSync(`${path}.partial`);
+		const whereTheDraftIsWritten = `${path}.partial`;
+		mkdirSync(whereTheDraftIsWritten);
 
 		const shot = await sizeScreenshot(path, { pointWidth: 440 });
 		expect(shot.width).toBe(1320);
 		expect(readFileSync(path).equals(before)).toBe(true);
-		expect(existsSync(`${path}.partial`)).toBe(false);
+		expect(existsSync(whereTheDraftIsWritten)).toBe(false);
 	});
 
 	test("a fractional point width still counts as points once rounded", async () => {
-		const shot = await sizeScreenshot(pngHeaderOnly(411), { pointWidth: 411.4285714285714, scale: 1 });
-		expect(shot.width).toBe(411);
+		const shot = await sizeScreenshot(pngHeaderOnly(Math.round(ANDROID_POINT_WIDTH)), {
+			pointWidth: ANDROID_POINT_WIDTH,
+			scale: 1,
+		});
+		expect(shot.width).toBe(Math.round(ANDROID_POINT_WIDTH));
 		expect(shot.inPoints).toBe(true);
 	});
 

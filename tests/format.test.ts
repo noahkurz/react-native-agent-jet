@@ -217,8 +217,7 @@ describe("coordinateHint", () => {
 		expect(coordinateHint(cropped)).toBe("1px = 1pt, then add (8,108) for tap/swipe");
 	});
 
-	test("keeps enough precision that the error stays under a pixel down a tall screen", () => {
-		// Two decimals would say 0.33, drifting ~9pt by the bottom of a 2868px capture.
+	test("keeps four decimals, since two would drift several points down a tall screen", () => {
 		expect(coordinateHint(shot({ width: 1320, inPoints: false }))).toBe("multiply by 0.3333 for tap/swipe");
 	});
 });

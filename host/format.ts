@@ -46,14 +46,17 @@ function isActionable(node: UINode): boolean {
 	return node.pressable === true || node.input === true || node.scrollable === true;
 }
 
+function withoutConsecutiveRepeats(items: string[]): string[] {
+	return items.filter((item, index) => item !== items[index - 1]);
+}
+
 /** The text interactive mode would drop from under a pressable, so a list row still says what it is. */
 function droppedText(node: UINode): string {
 	const fragments = node.children
 		.filter((child) => !isActionable(child))
 		.flatMap((child) => [child.text ?? "", droppedText(child)])
 		.filter(Boolean);
-	// Tab bars render an icon twice for its active and inactive states; once is enough here.
-	return fragments.filter((fragment, index) => fragment !== fragments[index - 1]).join(" ");
+	return withoutConsecutiveRepeats(fragments).join(" ");
 }
 
 export function filterTree(nodes: UINode[], opts: { interactive?: boolean; maxDepth?: number }, depth = 0): UINode[] {
@@ -156,16 +159,16 @@ export function formatDiff(diff: TreeDiff): string {
 	return lines.length ? lines.join("\n") : "(no changes)";
 }
 
-/**
- * How to turn a coordinate read off a screenshot back into a screen point. Kept to four
- * decimals rather than two: on a 1320px capture the difference is a fraction of a pixel,
- * where two decimals drift by several points down a tall screen.
- */
+/** Four decimals: two would drift several points down a tall screen. */
+const MULTIPLIER_DECIMALS = 4;
+
+/** How to turn a coordinate read off a screenshot back into a screen point. */
 export function coordinateHint(shot: Screenshot): string {
 	if (!shot.region) return "the point size of this screen is unknown, so coordinates cannot be converted";
 
 	const pointsPerPixel = shot.region.width / shot.width;
-	const steps = [shot.inPoints ? "1px = 1pt" : `multiply by ${Number(pointsPerPixel.toFixed(4))}`];
+	const multiplier = Number(pointsPerPixel.toFixed(MULTIPLIER_DECIMALS));
+	const steps = [shot.inPoints ? "1px = 1pt" : `multiply by ${multiplier}`];
 	const isOffset = shot.region.x !== 0 || shot.region.y !== 0;
 	if (isOffset) steps.push(`add (${Math.round(shot.region.x)},${Math.round(shot.region.y)})`);
 

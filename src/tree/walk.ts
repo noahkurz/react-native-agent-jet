@@ -284,7 +284,6 @@ function isRedundantWrapper(parent: UINode, only: UINode): boolean {
 	);
 }
 
-/** Puts `only` where `semantic` sat in its parent, and forgets `semantic`. */
 function hoist(only: SemanticNode, semantic: SemanticNode, all: SemanticNode[]): void {
 	const parent = semantic.parent;
 	if (!parent) return;

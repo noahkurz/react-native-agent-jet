@@ -82,7 +82,7 @@ function windowOrigin(): Point {
 	return { x: 0, y: startsBelowTheStatusBar ? (StatusBar.currentHeight ?? 0) : 0 };
 }
 
-/** The element's frame on the screen, in whole points: a tap cannot resolve less, and decimals cost tokens. */
+/** In whole points: a tap cannot resolve less, and decimals cost tokens. */
 function measure(fiber: Fiber, origin: Point): Promise<Frame | undefined> {
 	const instance = publicInstanceOf(fiber);
 	if (!instance) return Promise.resolve(undefined);
