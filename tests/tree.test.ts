@@ -5,6 +5,9 @@ import { MAX_WALK_DEPTH } from "../src/tree/names";
 mock.module("react-native", () => ({
 	StyleSheet: { flatten: (style: unknown) => style },
 	Dimensions: { get: () => ({ width: 400, height: 800 }) },
+	Platform: { OS: "ios" },
+	StatusBar: {},
+	TurboModuleRegistry: { get: () => null },
 }));
 
 const HOST = 5;

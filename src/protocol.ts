@@ -9,7 +9,10 @@ export type Selector = {
 
 export type Target = string | Selector;
 
-export type Frame = { x: number; y: number; width: number; height: number };
+export type Point = { x: number; y: number };
+
+/** A rectangle on the screen, in points — the coordinates tap and swipe take and screenshots show. */
+export type Frame = Point & { width: number; height: number };
 
 export type UINode = {
 	id: number;
