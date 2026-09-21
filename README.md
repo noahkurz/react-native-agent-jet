@@ -211,14 +211,14 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 
 **See the screen**
 
-| Tool                | What it does                                                                                                                                                                                                                                                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                                                                                                       |
-| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                                                                                                                                     |
-| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                                                                                                                            |
-| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                                                                                                                                   |
-| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                                                                                                                                 |
-| `screenshot`        | A PNG, for when you need to _see_. Defaults to half the screen's point size — a quarter of the tokens, and still enough for layout. `target:"Add to cart"` crops to one element at full detail for a fraction again; `scale:1` reads text on a whole screen. **The reply says how to convert coordinates**, so read it before using them for taps |
+| Tool                | What it does                                                                                                                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                                                                                                          |
+| `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                                                                                                                                        |
+| `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                                                                                                                               |
+| `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                                                                                                                                      |
+| `logs` · `network`  | Captured console output, errors, and HTTP traffic                                                                                                                                                                                                                                                                                                    |
+| `screenshot`        | A PNG, for when you need to _see_. Defaults to half the screen's point size — a quarter of the tokens, and still enough for layout. `target:"Add to cart"` crops to one element at full detail for about half the cost; `scale:1` reads text on a whole screen. **The reply says how to convert coordinates**, so read it before using them for taps |
 
 **Act**
 
@@ -257,27 +257,27 @@ Every element tool takes a `target`:
 
 ## Token efficiency
 
-Agents drive this by reading a tree and acting on selectors — not by screenshotting every step. The act-and-verify loop that dominates a session is roughly **20–50× cheaper** than screenshot-driving, where every step is an image the model must vision-parse.
+Agents drive this by reading a tree and acting on selectors — not by screenshotting every step. The act-and-verify loop that dominates a session (`press`, then `tree` with `changesSince:true`) costs about 50 tokens; the same step by screenshot-driving — a screenshot legible enough to read, then a tap — costs about 600, so the loop is roughly **10× cheaper**.
 
-Images are billed by area, so the lever is pixels, not file size: `screenshot` renders at half the screen's point size by default, which costs a quarter of a full-size capture. Text on screen is what `tree` is for, leaving the image to show layout, spacing and colour — all of which survive the downscale. Pass `scale:1` when you genuinely need to read rendered text, such as an error overlay.
+Images cost one visual token per 28×28-pixel patch (`⌈width/28⌉ × ⌈height/28⌉`), so the lever is pixels, not file size: `screenshot` renders at half the screen's point size by default, which costs a quarter of a full-size capture (144 tokens against 560 on an iPhone 17 Pro Max). Text on screen is what `tree` is for, leaving the image to show layout, spacing and colour — all of which survive the downscale. Pass `scale:1` when you genuinely need to read rendered text, such as an error overlay.
 
-When the question is about one component rather than the whole screen, `target` crops to it — with a little context around it, and at full detail, since cropping has already cut the area many times over. Checking one card or button that way costs less than a `tree` call.
+When the question is about one component rather than the whole screen, `target` crops to it — with a little context around it, and at full detail, since cropping has already cut the area many times over. A cropped button is under 10 image tokens and even a full-width row is under 50; the reply text saying what was cropped and how to convert coordinates costs about as much again.
 
-Approximate output tokens per call (demo Home screen):
+Tokens per call, measured on the demo Home screen (iPhone 17 Pro Max, 440×956pt @3x) with `count_tokens` against `claude-opus-5`; other models tokenize slightly differently:
 
-| Call                         |     Tokens |                                           |
-| ---------------------------- | ---------: | ----------------------------------------- |
-| `find` / `press`             |        ~15 | a single element                          |
-| `tree` · `changesSince:true` | **~10–40** | only what changed — the usual verify step |
-| `nav_state`                  |        ~30 | route + path (`full:true` ≈ 160)          |
-| `tree` · `interactive:true`  |        ~70 | actionable nodes only                     |
-| `tree` (default)             |       ~165 | whole screen, no coordinates              |
-| `tree` · `frames:true`       |       ~290 | adds coordinates                          |
-| `screenshot` · `target`      | **~20–75** | one element, full detail                  |
-| `screenshot` (default)       |   ~110–140 | whole screen at half point size           |
-| `screenshot` · `scale:1`     |   ~450–560 | whole screen, legible text                |
+| Call                         |     Tokens |                                                             |
+| ---------------------------- | ---------: | ----------------------------------------------------------- |
+| `tree` · `changesSince:true` | **~10–25** | only what changed — the usual verify step                   |
+| `find` / `press`             |        ~30 | a single element                                            |
+| `nav_state`                  |        ~25 | route + path (`full:true` ≈ 180)                            |
+| `screenshot` · `target`      |    ~60–110 | one element: 8–48 for the image, ~55 for the reply text     |
+| `screenshot` (default)       |       ~175 | whole screen at half point size: 144 image + ~30 reply text |
+| `tree` · `interactive:true`  |       ~300 | actionable nodes only                                       |
+| `tree` (default)             |       ~500 | whole screen, no coordinates                                |
+| `screenshot` · `scale:1`     |       ~590 | whole screen, legible text: 560 image + ~30 reply text      |
+| `tree` · `frames:true`       |       ~750 | adds coordinates, which tokenize expensively                |
 
-The defaults lean this way on purpose: `tree` omits coordinates (selectors don't need them), `nav_state` returns just the path, and `changesSince:true` turns verification into a diff. On busy screens that's exactly where `interactive:true` and `changesSince:true` earn their keep.
+The defaults lean this way on purpose: `tree` omits coordinates (selectors don't need them), `nav_state` returns just the path, and `changesSince:true` turns verification into a diff. On busy screens that's exactly where `interactive:true` and `changesSince:true` earn their keep — and where a default `screenshot` is a legitimate, cheaper way to take in the whole screen than a full `tree`.
 
 ---
 
@@ -314,7 +314,7 @@ Every bridge internal is absent; only the empty wrapper name survives. Nothing t
 
 ## How it works
 
-- **Reading the screen** — the bridge uses the same `__REACT_DEVTOOLS_GLOBAL_HOOK__` React DevTools relies on, walks each root's Fiber tree, and keeps only meaningful nodes (text, `testID`, accessibility props, `onPress`, inputs, scroll views). Wrapper chains collapse to one node, inactive navigator screens are skipped, and frames come from Fabric's `measureInWindow`.
+- **Reading the screen** — the bridge uses the same `__REACT_DEVTOOLS_GLOBAL_HOOK__` React DevTools relies on, walks each root's Fiber tree, and keeps only meaningful nodes (text, `testID`, accessibility props, `onPress`, inputs, scroll views). Wrapper chains collapse to one node, inactive navigator screens are skipped, and frames come from Fabric's `measureInWindow`, moved onto the screen on Android where the window starts below the status bar.
 - **Acting** — targets resolve against a fresh snapshot each time and act on the fiber directly: `onPress` gets a synthetic event, inputs are focused and updated through `onChangeText`, scroll views use `scrollTo`. Real input (screenshots, keystrokes, taps) goes through `xcrun simctl` / AXe / `adb`.
 - **Logs & network** — `console` and `XMLHttpRequest`/`fetch` are patched once and buffered, so an agent can ask for everything since the last entry it saw.
 - **Transport** — the app is a WebSocket client, the MCP server is the WebSocket server, so the app finds the host on `localhost` (or `10.0.2.2` on Android) with no simulator config.
@@ -362,7 +362,7 @@ iOS itself is macOS-only because the iOS Simulator is.
 ```bash
 bun install
 bun run typecheck
-bun test          # 171 tests, no device needed
+bun test          # 182 tests, no device needed
 bun run build     # builds the host (MCP server + CLI) into dist/
 ```
 

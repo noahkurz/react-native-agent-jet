@@ -12,7 +12,16 @@ import {
 import { android, hasAdb } from "../android.js";
 import { deviceFor } from "../devices.js";
 import { ios } from "../ios.js";
-import { coordinateHint, describeLine, diffTrees, filterTree, formatDiff, json, outline } from "../format.js";
+import {
+	coordinateHint,
+	describeLine,
+	describeRoute,
+	diffTrees,
+	filterTree,
+	formatDiff,
+	json,
+	outline,
+} from "../format.js";
 import { type ToolContext, locate, platformSchema, shortenStack, targetSchema, text } from "./shared.js";
 
 /** Widens a frame on every side, so a cropped element keeps some of its surroundings. */
@@ -54,29 +63,25 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 	server.registerTool(
 		"screenshot",
 		{
-			description: `Capture the device screen. Defaults to ${DEFAULT_SCREENSHOT_SCALE}× the screen's point size, which costs a quarter of the tokens of a full-size image and still shows layout, spacing and colour — the text on screen is what 'tree' is for. Pass target to crop to one element, which is far cheaper again and shown at full detail. Pass scale:1 on a whole screen when you need to read rendered text, such as an error overlay. The reply says how to convert coordinates read off the image.`,
+			description: `PNG of the screen at ${DEFAULT_SCREENSHOT_SCALE}× point size by default: a quarter of the tokens, enough for layout (text is what tree is for). target crops to one element at full detail; scale:1 makes text legible. The reply says how to convert coordinates.`,
 			inputSchema: {
 				target: targetSchema
 					.optional()
-					.describe(
-						`Crop to this element instead of the whole screen, with ${CROP_MARGIN_POINTS}pt of context around it. Much cheaper than a full screen and shown at full detail, so it is the right way to look closely at one component.`,
-					),
+					.describe(`Crop to this element with ${CROP_MARGIN_POINTS}pt of context, at full detail.`),
 				scale: z
 					.number()
 					.positive()
 					.max(1)
 					.optional()
 					.describe(
-						`Fraction of the captured region's point size (default ${DEFAULT_SCREENSHOT_SCALE}; full detail when target is given or no app is connected). 1 means 1 image pixel = 1 point.`,
+						`Fraction of point size (default ${DEFAULT_SCREENSHOT_SCALE}; 1 = 1px per point). Crops default to 1.`,
 					),
 				width: z
 					.number()
 					.int()
 					.positive()
 					.optional()
-					.describe(
-						"Absolute output width in pixels. Overrides scale, is never upscaled, and is the only size control when no app is connected.",
-					),
+					.describe("Output width in pixels; overrides scale, never upscales."),
 				platform: platformSchema,
 			},
 		},
@@ -84,22 +89,17 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 			const pointWidth = app.connectionFor(platform)?.device.windowWidth ?? null;
 			const node = target === undefined ? null : await locate(app, target, undefined, platform);
 			if (node && !node.frame) throw new Error(`Element has no on-screen frame: ${describeLine(node)}`);
+			const crop = node?.frame ? grow(node.frame, CROP_MARGIN_POINTS) : null;
 
-			const shot = await (
-				await deviceFor(app, platform)
-			).screenshot({
-				preferredPixelWidth: width,
-				pointWidth,
-				scale,
-				crop: node?.frame ? grow(node.frame, CROP_MARGIN_POINTS) : null,
-			});
+			const device = await deviceFor(app, platform);
+			const shot = await device.screenshot({ preferredPixelWidth: width, pointWidth, scale, crop });
 			const data = (await readFile(shot.path)).toString("base64");
-			const shows = shot.cropped && node ? `Cropped to ${describeLine(node)}` : "Full screen";
+			const shows = shot.cropped && node ? `Cropped to ${describeLine(node, false)}` : "Full screen";
 
 			return {
 				content: [
 					{ type: "image", data, mimeType: "image/png" },
-					{ type: "text", text: `${shows} — saved to ${shot.path} (${shot.width}px wide; ${coordinateHint(shot)})` },
+					{ type: "text", text: `${shows}, ${shot.width}px wide; ${coordinateHint(shot)}` },
 				],
 			};
 		},
@@ -109,25 +109,17 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 		"tree",
 		{
 			description:
-				"Semantic tree of what the app currently renders, built from React's component tree: every element with a testID, label, text, onPress, text input or scroll view. Use this instead of screenshots to see and act on the screen. Coordinates are omitted by default (press/type/find work by selector); pass frames:true only when you need to tap a point.",
+				"What the app renders: every element with text, label, testID, onPress, input or scroll view. Use instead of screenshots. Coordinates only with frames:true.",
 			inputSchema: {
-				format: z.enum(["outline", "json"]).optional().describe("outline (default, compact) or json"),
-				interactive: z
-					.boolean()
-					.optional()
-					.describe("Only actionable nodes (pressable, input, scroll) and their ancestors — much smaller"),
-				maxDepth: z
-					.number()
-					.int()
-					.min(1)
-					.optional()
-					.describe("Maximum number of levels to return (1 = top-level nodes only)"),
-				frames: z.boolean().optional().describe("Include on-screen coordinates (default false)"),
-				includeOffscreen: z.boolean().optional().describe("Include elements that are mounted but off screen"),
+				format: z.enum(["outline", "json"]).optional().describe("outline (default) or json"),
+				interactive: z.boolean().optional().describe("Only pressable/input/scroll nodes and their ancestors"),
+				maxDepth: z.number().int().min(1).optional().describe("Levels to return (1 = top level)"),
+				frames: z.boolean().optional().describe("Include coordinates"),
+				includeOffscreen: z.boolean().optional().describe("Include mounted but off-screen elements"),
 				changesSince: z
 					.boolean()
 					.optional()
-					.describe("Return only what changed since the previous tree call for this app — ideal after an action"),
+					.describe("Only what changed since the last tree call; use after an action"),
 				platform: platformSchema,
 			},
 		},
@@ -198,20 +190,12 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 	server.registerTool(
 		"nav_state",
 		{
-			description: "The focused route and its path. Pass full:true for the entire navigation state tree.",
-			inputSchema: {
-				full: z.boolean().optional().describe("Include the full nested navigation state (default false)"),
-				platform: platformSchema,
-			},
+			description: "The focused route and its path; full:true for the whole navigation state.",
+			inputSchema: { full: z.boolean().optional().describe("Whole nested navigation state"), platform: platformSchema },
 		},
 		async ({ full, platform }) => {
-			const state = (await app.request("navState", {}, platform)) as {
-				current?: unknown;
-				path?: unknown;
-				state?: unknown;
-			};
-			if (full) return text(json(state));
-			return text(json({ current: state.current, path: state.path }));
+			const state = await app.request("navState", {}, platform);
+			return text(full ? json(state) : describeRoute(state));
 		},
 	);
 

@@ -28,14 +28,12 @@ export const selectorSchema = z.object({
 
 export const targetSchema = z
 	.union([z.string(), selectorSchema])
-	.describe(
-		'Element to act on. A string matches testID exactly, or text/label/placeholder/value by case-insensitive substring, or "#id" from the tree. An object narrows by field; index picks among multiple matches.',
-	);
+	.describe('A testID, a text/label/placeholder/value substring, or "#id" from the tree; or a selector object.');
 
 export const platformSchema = z
 	.enum(["ios", "android"])
 	.optional()
-	.describe("Which connected app to target when both iOS and Android are running. Defaults to the active one.");
+	.describe("ios or android; defaults to the active app.");
 
 export function center(node: UINode): { x: number; y: number } | null {
 	const tappableArea = node.visible === false ? undefined : node.frame;

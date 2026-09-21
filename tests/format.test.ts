@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { UINode } from "../src/protocol.js";
 import type { Screenshot } from "../host/image.js";
-import { coordinateHint, describeLine, diffTrees, filterTree, formatDiff, outline } from "../host/format.js";
+import {
+	coordinateHint,
+	describeLine,
+	describeRoute,
+	diffTrees,
+	filterTree,
+	formatDiff,
+	outline,
+} from "../host/format.js";
 
 const node = (over: Partial<UINode> & { id: number }): UINode => ({
 	type: "View",
@@ -135,9 +143,7 @@ describe("coordinateHint", () => {
 	});
 
 	test("a halved screen gives the multiplier", () => {
-		expect(coordinateHint(shot({ width: 220, inPoints: false }))).toBe(
-			"multiply coordinates read off it by 2 for tap/swipe",
-		);
+		expect(coordinateHint(shot({ width: 220, inPoints: false }))).toBe("multiply by 2 for tap/swipe");
 	});
 
 	test("a crop also gives the origin to add back", () => {
@@ -147,8 +153,21 @@ describe("coordinateHint", () => {
 
 	test("keeps enough precision that the error stays under a pixel down a tall screen", () => {
 		// Two decimals would say 0.33, drifting ~9pt by the bottom of a 2868px capture.
-		expect(coordinateHint(shot({ width: 1320, inPoints: false }))).toBe(
-			"multiply coordinates read off it by 0.3333 for tap/swipe",
-		);
+		expect(coordinateHint(shot({ width: 1320, inPoints: false }))).toBe("multiply by 0.3333 for tap/swipe");
+	});
+});
+
+describe("describeRoute", () => {
+	test("gives the focused route and its trail in two lines, without the random route key", () => {
+		const summary = {
+			current: { name: "index", path: "/", key: "index-A9b7dXSmkcwI1-IoR-1mQ" },
+			path: ["__root", "(tabs)", "index"],
+		};
+		expect(describeRoute(summary)).toBe("route: index (/)\npath: __root > (tabs) > index");
+	});
+
+	test("adds params only when the route has them", () => {
+		const summary = { current: { name: "detail", params: { id: "42" } }, path: ["__root", "detail"] };
+		expect(describeRoute(summary)).toBe('route: detail\npath: __root > detail\nparams: {"id":"42"}');
 	});
 });

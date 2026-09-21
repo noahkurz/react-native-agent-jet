@@ -3,7 +3,7 @@ export type NavigationLike = {
 	goBack(): void;
 	canGoBack(): boolean;
 	getRootState(): unknown;
-	getCurrentRoute(): { name: string; params?: unknown } | undefined;
+	getCurrentRoute(): NavigationSummary["current"];
 };
 
 export type NavigationHandle = NavigationLike | { current: NavigationLike | null };
@@ -17,6 +17,7 @@ export type QueryClientLike = {
 	};
 };
 
+import type { NavigationSummary } from "./protocol";
 import { configureRedaction, type RedactOption } from "./redact";
 
 export type StateValue = unknown | (() => unknown);
@@ -185,7 +186,7 @@ function focusedPath(state: RouteState | undefined): string[] {
 	return path;
 }
 
-export function navigationSummary(): unknown {
+export function navigationSummary(): NavigationSummary {
 	const nav = navigationOrNull();
 	if (!nav) throw navigationUnavailable();
 

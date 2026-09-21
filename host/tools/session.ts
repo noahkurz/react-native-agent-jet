@@ -9,8 +9,7 @@ export function registerSessionTools(server: McpServer, { app, lastTree }: ToolC
 	server.registerTool(
 		"select_platform",
 		{
-			description:
-				"Set the DEFAULT platform to drive when both iOS and Android are connected. Optional — every tool also takes a per-call `platform`, so you can drive both without switching. Defaults to the most recently connected app.",
+			description: "Default platform when both iOS and Android are connected; every tool also takes platform per call.",
 			inputSchema: { platform: z.enum(["ios", "android"]) },
 		},
 		async ({ platform }) => {
