@@ -9,7 +9,10 @@ export type Selector = {
 
 export type Target = string | Selector;
 
-export type Frame = { x: number; y: number; width: number; height: number };
+export type Point = { x: number; y: number };
+
+/** A rectangle on the screen, in points — the coordinates tap and swipe take and screenshots show. */
+export type Frame = Point & { width: number; height: number };
 
 export type UINode = {
 	id: number;
@@ -61,6 +64,15 @@ export type NetworkEntry = {
 
 export type TreeParams = { layout?: boolean; visibleOnly?: boolean };
 
+export type NavigationSummary = {
+	/** The focused route as React Navigation reports it: name, and path/params when it has them. */
+	current?: { name: string; path?: string; params?: unknown };
+	/** Route names from the root navigator down to the focused screen. */
+	path: string[];
+	/** The whole nested navigation state, compacted. */
+	state?: unknown;
+};
+
 export type BridgeMethods = {
 	ping: { params: Record<string, never>; result: { ok: true } };
 	device: { params: Record<string, never>; result: DeviceInfo };
@@ -81,7 +93,7 @@ export type BridgeMethods = {
 		result: { route?: string };
 	};
 	goBack: { params: Record<string, never>; result: { route?: string } };
-	navState: { params: Record<string, never>; result: unknown };
+	navState: { params: Record<string, never>; result: NavigationSummary };
 	state: { params: { key?: string }; result: Record<string, unknown> };
 	logs: {
 		params: { since?: number; level?: LogEntry["level"] };

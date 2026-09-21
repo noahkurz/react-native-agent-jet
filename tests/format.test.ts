@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { UINode } from "../src/protocol.js";
-import { describeLine, diffTrees, filterTree, formatDiff, outline } from "../host/format.js";
+import type { Screenshot } from "../host/image.js";
+import {
+	coordinateHint,
+	describeLine,
+	describeRoute,
+	diffTrees,
+	filterTree,
+	formatDiff,
+	outline,
+} from "../host/format.js";
 
 const node = (over: Partial<UINode> & { id: number }): UINode => ({
 	type: "View",
@@ -9,6 +18,14 @@ const node = (over: Partial<UINode> & { id: number }): UINode => ({
 });
 
 describe("describeLine", () => {
+	test("role=button adds nothing to a pressable, so it is left out", () => {
+		expect(describeLine(node({ id: 1, type: "Pressable", role: "button", pressable: true, text: "Go" }))).toBe(
+			'#1 Pressable "Go" [press]',
+		);
+		expect(describeLine(node({ id: 2, type: "View", role: "button", text: "Go" }))).toBe('#2 View role=button "Go"');
+		expect(describeLine(node({ id: 3, type: "View", role: "tab", pressable: true }))).toBe("#3 View role=tab [press]");
+	});
+
 	test("omits coordinates unless frames are asked for", () => {
 		const button = node({
 			id: 1,
@@ -55,6 +72,64 @@ describe("filterTree", () => {
 
 	test("without options the tree is unchanged", () => {
 		expect(outline(filterTree(tree, {}), false)).toEqual(outline(tree, false));
+	});
+
+	test("interactive keeps the text of a row it strips, so the row still says what it is", () => {
+		const row = node({
+			id: 10,
+			type: "Pressable",
+			pressable: true,
+			children: [node({ id: 11, type: "Text", text: "#1" }), node({ id: 12, type: "Text", text: "sunt aut facere" })],
+		});
+		const [kept] = filterTree([row], { interactive: true });
+		expect(kept!.text).toBe("#1 sunt aut facere");
+		expect(kept!.children).toEqual([]);
+	});
+
+	test("a summary does not reach into controls that are kept anyway", () => {
+		const card = node({
+			id: 20,
+			type: "Pressable",
+			pressable: true,
+			children: [
+				node({ id: 21, type: "Text", text: "Title" }),
+				node({ id: 22, type: "Pressable", pressable: true, text: "Delete" }),
+			],
+		});
+		const [kept] = filterTree([card], { interactive: true });
+		expect(kept!.text).toBe("Title");
+		expect(kept!.children.map((child) => child.id)).toEqual([22]);
+	});
+
+	test("a labelled control and a scroll container are not summarised", () => {
+		const tab = node({
+			id: 40,
+			pressable: true,
+			label: "Home, tab, 1 of 3",
+			children: [node({ id: 41, text: "Home" })],
+		});
+		const list = node({ id: 42, scrollable: true, children: [node({ id: 43, text: "heading" })] });
+		const kept = filterTree([tab, list], { interactive: true });
+		expect(kept.map((item) => item.text)).toEqual([undefined, undefined]);
+	});
+
+	test("a repeated fragment is summarised once", () => {
+		const row = node({
+			id: 50,
+			pressable: true,
+			children: [node({ id: 51, text: "⌂" }), node({ id: 52, text: "⌂" }), node({ id: 53, text: "Home" })],
+		});
+		expect(filterTree([row], { interactive: true })[0]!.text).toBe("⌂ Home");
+	});
+
+	test("a control with text of its own is not summarised over", () => {
+		const [kept] = filterTree(
+			[node({ id: 30, pressable: true, text: "Save", children: [node({ id: 31, text: "x" })] })],
+			{
+				interactive: true,
+			},
+		);
+		expect(kept!.text).toBe("Save");
 	});
 });
 
@@ -112,5 +187,52 @@ describe("diffing a filtered tree", () => {
 	test("the same change is reported when nothing is filtered out", () => {
 		const diff = diffTrees(withCounter("1"), withCounter("2"));
 		expect(formatDiff(diff)).toContain("#2");
+	});
+});
+
+describe("coordinateHint", () => {
+	const shot = (over: Partial<Screenshot>): Screenshot => ({
+		path: "/tmp/shot.png",
+		width: 440,
+		inPoints: true,
+		region: { x: 0, y: 0, width: 440, height: 956 },
+		cropped: false,
+		...over,
+	});
+
+	test("says so when there is no way to convert", () => {
+		expect(coordinateHint(shot({ region: null }))).toMatch(/unknown/);
+	});
+
+	test("a full-detail screen needs no conversion", () => {
+		expect(coordinateHint(shot({}))).toBe("1px = 1pt for tap/swipe");
+	});
+
+	test("a halved screen gives the multiplier", () => {
+		expect(coordinateHint(shot({ width: 220, inPoints: false }))).toBe("multiply by 2 for tap/swipe");
+	});
+
+	test("a crop also gives the origin to add back", () => {
+		const cropped = shot({ width: 424, region: { x: 8, y: 108, width: 424, height: 104 }, cropped: true });
+		expect(coordinateHint(cropped)).toBe("1px = 1pt, then add (8,108) for tap/swipe");
+	});
+
+	test("keeps four decimals, since two would drift several points down a tall screen", () => {
+		expect(coordinateHint(shot({ width: 1320, inPoints: false }))).toBe("multiply by 0.3333 for tap/swipe");
+	});
+});
+
+describe("describeRoute", () => {
+	test("gives the focused route and its trail in two lines, without the random route key", () => {
+		const summary = {
+			current: { name: "index", path: "/", key: "index-A9b7dXSmkcwI1-IoR-1mQ" },
+			path: ["__root", "(tabs)", "index"],
+		};
+		expect(describeRoute(summary)).toBe("route: index (/)\npath: __root > (tabs) > index");
+	});
+
+	test("adds params only when the route has them", () => {
+		const summary = { current: { name: "detail", params: { id: "42" } }, path: ["__root", "detail"] };
+		expect(describeRoute(summary)).toBe('route: detail\npath: __root > detail\nparams: {"id":"42"}');
 	});
 });

@@ -1,8 +1,9 @@
-import { DevSettings, Dimensions, PixelRatio, Platform } from "react-native";
+import { Dimensions, PixelRatio, Platform } from "react-native";
 import { focus, press, scroll, setText } from "./actions";
 import { clearCapture, readLogs, readNetwork } from "./capture";
 import { describeNode, find, tree } from "./tree";
 import { appName, goBack, navigateTo, navigationSummary, readState } from "./handles";
+import { reloadBundle } from "./reload";
 import type { BridgeMethods, DeviceInfo, MethodName } from "./protocol";
 
 export function deviceInfo(): DeviceInfo {
@@ -46,7 +47,7 @@ const handlers: Handlers = {
 		return { ok: true };
 	},
 	reload: () => {
-		setTimeout(() => DevSettings.reload(), 50);
+		setTimeout(reloadBundle, 50);
 		return { ok: true };
 	},
 };

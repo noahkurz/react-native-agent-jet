@@ -24,4 +24,20 @@ export const DEFAULT_WAIT_MS = 5_000;
 export const DEFAULT_SWIPE_DISTANCE = 300;
 export const DEFAULT_SWIPE_SECONDS = 0.3;
 
+/**
+ * Screenshots cost tokens by area, not by file size, so half the point width is a
+ * quarter of the tokens. Text on screen comes from `tree`, which leaves the image to
+ * show layout — spacing, overlap, clipping, colour — and half scale shows all of that.
+ */
+export const DEFAULT_SCREENSHOT_SCALE = 0.5;
+
+/** One image pixel per point: the whole screen costs ~4× the default, but text is legible. */
+export const FULL_DETAIL_SCALE = 1;
+
+/** Context kept around a cropped element, in points, so its spacing stays visible. */
+export const CROP_MARGIN_POINTS = 12;
+
+/** Fallback width when no app is connected and the screen's point size is unknown. */
+export const UNKNOWN_POINT_WIDTH_MAX_PX = 450;
+
 export const SHUTDOWN_MESSAGE = "The agent-jet server is shutting down.";

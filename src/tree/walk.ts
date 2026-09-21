@@ -70,7 +70,14 @@ type NamedType = {
 
 const GENERIC_NAMES = new Set(["Anonymous", "ForwardRef", "Themed(Anonymous)", "wrapped"]);
 
+const ANIMATED_WRAPPER = /^Animated\((.+)\)$/;
+
+/** Animated.createAnimatedComponent names its result Animated(X); the X is what matters. */
 export function nameOf(fiber: Pick<Fiber, "type">): string {
+	return rawNameOf(fiber).replace(ANIMATED_WRAPPER, "$1");
+}
+
+function rawNameOf(fiber: Pick<Fiber, "type">): string {
 	const raw = fiber.type;
 	if (typeof raw === "string") return raw;
 	const canCarryAName = Boolean(raw) && (typeof raw === "object" || typeof raw === "function");
@@ -87,7 +94,7 @@ export function nameOf(fiber: Pick<Fiber, "type">): string {
 		return ownNameIsMeaningful ? (own as string) : tamagui || own || "ForwardRef";
 	}
 	if (type.$$typeof === REACT_MEMO) {
-		return type.displayName || nameOf({ type: type.type });
+		return type.displayName || rawNameOf({ type: type.type });
 	}
 	return tamagui || type.displayName || "";
 }
@@ -244,14 +251,45 @@ function isBareLeaf(child: UINode): boolean {
 	return child.children.length === 0 && !child.pressable && !child.input && !child.scrollable;
 }
 
+/**
+ * A pressable wrapping a pressable is one control when they share a handler, or when the
+ * inner one repeats the outer's label, testID or role — a component passing its
+ * accessibility props down to the Pressable it renders, as tab bars and buttons do.
+ * Repeating just the role counts too: a control whose only child announces the same role
+ * is one control to assistive technology, which is the tree this reports.
+ */
 function isTheSameControl(child: SemanticNode, parent: SemanticNode): boolean {
+	const bothPressable =
+		parent.node.pressable === true && child.node.pressable === true && !child.node.input && !child.node.scrollable;
+	if (!bothPressable) return false;
+
+	const sharesTheHandler = child.onPress === parent.onPress;
+	const repeatsTheLabel = Boolean(child.node.label) && child.node.label === parent.node.label;
+	const repeatsTheTestID = Boolean(child.node.testID) && child.node.testID === parent.node.testID;
+	const repeatsTheRole = Boolean(child.node.role) && child.node.role === parent.node.role;
+	return sharesTheHandler || repeatsTheLabel || repeatsTheTestID || repeatsTheRole;
+}
+
+/**
+ * A wrapper with nothing of its own but identity its only child already carries — such
+ * as TextInput's component around the host input it renders — is one node too many.
+ */
+function isRedundantWrapper(parent: UINode, only: UINode): boolean {
+	const hasSemanticsOfItsOwn = parent.pressable || parent.input || parent.scrollable || Boolean(parent.text);
+	if (hasSemanticsOfItsOwn) return false;
 	return (
-		parent.node.pressable === true &&
-		child.node.pressable === true &&
-		child.onPress === parent.onPress &&
-		!child.node.input &&
-		!child.node.scrollable
+		(!parent.testID || only.testID === parent.testID) &&
+		(!parent.label || only.label === parent.label) &&
+		(!parent.role || only.role === parent.role)
 	);
+}
+
+function hoist(only: SemanticNode, semantic: SemanticNode, all: SemanticNode[]): void {
+	const parent = semantic.parent;
+	if (!parent) return;
+	parent.node.children.splice(parent.node.children.indexOf(semantic.node), 1, only.node);
+	only.parent = parent;
+	all.splice(all.indexOf(semantic), 1);
 }
 
 function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
@@ -261,6 +299,8 @@ function finalize(semantic: SemanticNode, all: SemanticNode[]): void {
 	if (!only) return;
 	const onlySemantic = all.find((candidate) => candidate.node === only);
 	if (!onlySemantic) return;
+
+	if (isRedundantWrapper(semantic.node, only)) return hoist(onlySemantic, semantic, all);
 
 	const absorbsText =
 		isBareLeaf(only) && addsNoIdentityOfItsOwn(only, semantic.node) && (!only.text || !semantic.node.text);

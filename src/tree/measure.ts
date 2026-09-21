@@ -1,5 +1,5 @@
-import { Dimensions } from "react-native";
-import type { Frame } from "../protocol";
+import { Dimensions, Platform, StatusBar, TurboModuleRegistry } from "react-native";
+import type { Frame, Point } from "../protocol";
 import { HOST_COMPONENT } from "./names";
 import type { Fiber, Measurable, SemanticNode } from "./types";
 
@@ -64,7 +64,26 @@ export function publicInstanceOf(fiber: Fiber): Measurable | null {
 	return shadowNodeInstance(stateNode);
 }
 
-function measure(fiber: Fiber): Promise<Frame | undefined> {
+type DeviceInfoModule = { getConstants?: () => { isEdgeToEdge?: boolean } };
+
+function drawsEdgeToEdge(): boolean {
+	return TurboModuleRegistry.get<DeviceInfoModule>("DeviceInfo")?.getConstants?.().isEdgeToEdge === true;
+}
+
+/**
+ * Where the window sits on the screen. measureInWindow answers in window coordinates, but taps
+ * land and screenshots are taken on the screen. On iOS the two are the same. On Android the
+ * window starts below the status bar unless the app draws edge to edge — the inset React
+ * Native itself subtracts when it places the root view — so frames are moved onto the screen
+ * here, once, rather than corrected by every tool that touches it.
+ */
+function windowOrigin(): Point {
+	const startsBelowTheStatusBar = Platform.OS === "android" && !drawsEdgeToEdge();
+	return { x: 0, y: startsBelowTheStatusBar ? (StatusBar.currentHeight ?? 0) : 0 };
+}
+
+/** In whole points: a tap cannot resolve less, and decimals cost tokens. */
+function measure(fiber: Fiber, origin: Point): Promise<Frame | undefined> {
 	const instance = publicInstanceOf(fiber);
 	if (!instance) return Promise.resolve(undefined);
 
@@ -73,7 +92,12 @@ function measure(fiber: Fiber): Promise<Frame | undefined> {
 		try {
 			instance.measureInWindow((x, y, width, height) => {
 				clearTimeout(timer);
-				resolve({ x: round(x), y: round(y), width: round(width), height: round(height) });
+				resolve({
+					x: Math.round(x + origin.x),
+					y: Math.round(y + origin.y),
+					width: Math.round(width),
+					height: Math.round(height),
+				});
 			});
 		} catch {
 			clearTimeout(timer);
@@ -82,28 +106,24 @@ function measure(fiber: Fiber): Promise<Frame | undefined> {
 	});
 }
 
-function round(value: number): number {
-	return Math.round(value * 10) / 10;
-}
-
-function isOnScreen(frame: Frame): boolean {
-	const { width, height } = Dimensions.get("window");
+function overlaps(frame: Frame, area: Frame): boolean {
 	return (
 		frame.width > 0 &&
 		frame.height > 0 &&
-		frame.x + frame.width > 0 &&
-		frame.y + frame.height > 0 &&
-		frame.x < width &&
-		frame.y < height
+		frame.x < area.x + area.width &&
+		frame.x + frame.width > area.x &&
+		frame.y < area.y + area.height &&
+		frame.y + frame.height > area.y
 	);
 }
 
 export async function measureAll(all: SemanticNode[]): Promise<void> {
-	const frames = await Promise.all(all.map((semantic) => measure(semantic.fiber)));
+	const window: Frame = { ...windowOrigin(), ...Dimensions.get("window") };
+	const frames = await Promise.all(all.map((semantic) => measure(semantic.fiber, window)));
 	all.forEach((semantic, index) => {
 		const frame = frames[index];
 		if (!frame) return;
 		semantic.node.frame = frame;
-		semantic.node.visible = isOnScreen(frame);
+		semantic.node.visible = overlaps(frame, window);
 	});
 }

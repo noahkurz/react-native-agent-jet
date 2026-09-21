@@ -6,6 +6,8 @@ const STEPS = `- Call \`tree\` once to see everything on screen: text, labels, t
 - Prefer \`press\`, \`type_text\` and \`navigate\` with targets over coordinate taps.
 - After an action, call \`tree\` with \`changesSince:true\` to see only what changed (cheap), and \`logs\` for errors.
 - Use \`interactive:true\` on busy screens, and only ask for \`frames:true\` or \`screenshot\` when you need coordinates or a visual.
+- \`screenshot\` is half size by default (a quarter of the tokens; layout, not text). \`target\` crops to one element at full detail; \`scale:1\` when you must read rendered text. Its reply says how to convert coordinates for \`tap\`.
+- Real touches (\`tap\`, \`swipe\`, \`press\` with \`via:"touch"\`) take seconds on iOS and ~100ms on Android; \`press\` through React is instant.
 - \`nav_state\` gives the focused route path; \`navigate\` jumps to a screen by route name (React Navigation) or path (Expo Router) from anywhere.
 - \`state\` reads values the app exposes; \`network\` shows HTTP traffic; Fast Refresh applies JS edits, \`reload\` restarts the bundle.`;
 

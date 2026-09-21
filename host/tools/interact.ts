@@ -11,7 +11,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"press",
 		{
 			description:
-				'Press an element. By default invokes its onPress through React, which is instant. Pass via: "touch" for a real touch at the element\'s center (exercises native gesture handling, but fast through adb on Android, several seconds through AXe on iOS because it serializes the accessibility tree first).',
+				'Press an element through its onPress (instant). via:"touch" sends a real touch at its centre instead: native gestures, but seconds on iOS.',
 			inputSchema: {
 				target: targetSchema,
 				index: z.number().int().optional(),
@@ -50,7 +50,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"tap",
 		{
 			description:
-				"Real touch at a point (in points, matching screenshot pixels). Useful for native UI the React tree cannot see, such as system alerts. Slow on iOS because AXe serializes the accessibility tree first.",
+				"Real touch at a point, in points as tree/find report (convert screenshot coordinates per its reply). For native UI the tree cannot see, such as system alerts. Slow on iOS.",
 			inputSchema: { x: z.number(), y: z.number(), platform: platformSchema },
 		},
 		async ({ x, y, platform }) => {
@@ -63,7 +63,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"type_text",
 		{
 			description:
-				"Type text with real keystrokes (AXe on iOS, adb on Android; adb is ASCII-only). If target is given, that input is focused first through React. Without real input available, falls back to set_text and requires a target.",
+				"Type with real keystrokes (ASCII-only on Android). Focuses target first if given; without real input, falls back to set_text and needs a target.",
 			inputSchema: {
 				text: z.string(),
 				target: targetSchema.optional(),
@@ -100,7 +100,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"set_text",
 		{
 			description:
-				"Set a text input's value directly through React (onChangeText + native props) without keystrokes. Faster than type_text but skips keyboard behaviour.",
+				"Set an input's value through React, no keystrokes. Faster than type_text but skips keyboard behaviour.",
 			inputSchema: {
 				target: targetSchema,
 				text: z.string(),
@@ -118,7 +118,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"swipe",
 		{
 			description:
-				"Real swipe gesture (prefer scroll_to for plain scrolling; slow on iOS). Direction is the finger's movement: swipe up scrolls content down. Starts at the target's center, or the screen center.",
+				"Real swipe in the finger's direction from the target's centre, or the screen centre. Prefer scroll_to for scrolling; slow on iOS.",
 			inputSchema: {
 				direction: z.enum(["up", "down", "left", "right"]),
 				target: targetSchema.optional(),
@@ -154,7 +154,7 @@ export function registerInteractTools(server: McpServer, { app, lastTree }: Tool
 		"scroll_to",
 		{
 			description:
-				"Scroll a ScrollView/FlatList/FlashList programmatically (no gesture). Target defaults to the first scroll view; pass toEnd or an x/y offset.",
+				"Scroll a list programmatically, no gesture: toEnd or an x/y offset. Target defaults to the first scroll view.",
 			inputSchema: {
 				target: targetSchema.optional(),
 				index: z.number().int().optional(),
