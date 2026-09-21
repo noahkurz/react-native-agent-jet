@@ -213,7 +213,7 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 
 | Tool                | What it does                                                                                                                                                                                                                                                                                                                                         |
 | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                                                                                                          |
+| `tree`              | The semantic tree of what's on screen. `interactive:true` for actionable nodes only (list rows keep their text) · `changesSince:true` for just what changed · `frames:true` for coordinates · `maxDepth:N` for N levels (1 = top level only) · `format:"json"` to parse                                                                              |
 | `find` · `wait_for` | Locate elements by target; `wait_for` polls until one appears                                                                                                                                                                                                                                                                                        |
 | `nav_state`         | The focused route and path (`full:true` for the whole navigation tree)                                                                                                                                                                                                                                                                               |
 | `state`             | Values exposed via `useAgentJetState` / `registerAgentJetState` / `queryClient`                                                                                                                                                                                                                                                                      |
@@ -269,15 +269,15 @@ Tokens per call, measured on the demo Home screen (iPhone 17 Pro Max, 440×956pt
 | ---------------------------- | ---------: | ----------------------------------------------------------- |
 | `tree` · `changesSince:true` | **~10–25** | only what changed — the usual verify step                   |
 | `find` / `press`             |        ~30 | a single element                                            |
-| `nav_state`                  |        ~25 | route + path (`full:true` ≈ 180)                            |
+| `nav_state`                  |        ~25 | route + path (`full:true` ≈ 180, growing with the stack)    |
 | `screenshot` · `target`      |    ~60–110 | one element: 8–48 for the image, ~55 for the reply text     |
 | `screenshot` (default)       |       ~175 | whole screen at half point size: 144 image + ~30 reply text |
-| `tree` · `interactive:true`  |       ~300 | actionable nodes only                                       |
-| `tree` (default)             |       ~500 | whole screen, no coordinates                                |
+| `tree` · `interactive:true`  |       ~185 | actionable nodes only, list rows summarised by their text   |
+| `tree` (default)             |       ~380 | whole screen, no coordinates                                |
 | `screenshot` · `scale:1`     |       ~590 | whole screen, legible text: 560 image + ~30 reply text      |
-| `tree` · `frames:true`       |       ~750 | adds coordinates, which tokenize expensively                |
+| `tree` · `frames:true`       |       ~600 | adds coordinates, which tokenize expensively                |
 
-The defaults lean this way on purpose: `tree` omits coordinates (selectors don't need them), `nav_state` returns just the path, and `changesSince:true` turns verification into a diff. On busy screens that's exactly where `interactive:true` and `changesSince:true` earn their keep — and where a default `screenshot` is a legitimate, cheaper way to take in the whole screen than a full `tree`.
+The defaults lean this way on purpose: `tree` omits coordinates (selectors don't need them), `nav_state` returns just the path, and `changesSince:true` turns verification into a diff. On busy screens that's exactly where `interactive:true` and `changesSince:true` earn their keep — and where a default `screenshot` (~175) is a legitimate way to take in a whole busy screen when its `tree` runs long.
 
 ---
 
