@@ -29,6 +29,10 @@ bun run build     # builds the host (MCP server + CLI) into dist/
 - **Self-documenting code.** The house style is that a comment is a sign a name or a shape could be better, so most of this codebase has none. Prefer extracting a well-named function or binding a named constant over explaining a line. Where a reason genuinely cannot live in the code — a platform quirk, a workaround for something upstream — put it in the pull request description or the commit message, where it is attached to the change rather than to the line.
 - **Tokens are a feature.** Every tool reply is read by a model and billed by the token. If a change makes a reply longer, say what it buys. The README's token table is measured with `count_tokens`, not estimated.
 
+## Changes to CI
+
+A pull request runs the workflow from its own branch, so an altered `.github/workflows/` file could report a passing check without having run anything. Those paths are owned by the maintainer, and a pull request touching them needs their approval before it can merge. Everything else merges on a green check alone.
+
 ## Commits
 
 Short, imperative subject lines, lowercase, with a `type:` prefix (`fix:`, `feat:`, `perf:`, `refactor:`, `docs:`, `chore:`). The body is for _why_, and for anything a reviewer would otherwise have to reconstruct.
