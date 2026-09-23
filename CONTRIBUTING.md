@@ -31,7 +31,7 @@ bun run build     # builds the host (MCP server + CLI) into dist/
 
 ## Changes to CI
 
-A pull request runs the workflow from its own branch, so an altered `.github/workflows/` file could report a passing check without having run anything. Those paths are owned by the maintainer, and a pull request touching them needs their approval before it can merge. Everything else merges on a green check alone.
+A pull request runs the workflow from its own merge commit, which includes any change the pull request makes to `.github/`, so an altered workflow could report a passing check without having run anything — and an altered `CODEOWNERS` could remove the protection. Everything under `.github/` is owned by the maintainer, and a pull request touching it needs their approval before it can merge. Everything else merges on a green check alone.
 
 ## Commits
 
