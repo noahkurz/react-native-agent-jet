@@ -206,8 +206,8 @@ export class AppConnection {
 	private waitForConnection(platform?: Platform, timeoutMs = CONNECT_WAIT_MS): Promise<Connection> {
 		if (this.closed) return Promise.reject(new Error(SHUTDOWN_MESSAGE));
 
-		const problem = this.listenFailure;
-		if (problem) return Promise.reject(new Error(problem));
+		const listenFailure = this.listenFailure;
+		if (listenFailure) return Promise.reject(new Error(listenFailure));
 
 		const wanted = platform ?? this.preferred ?? undefined;
 		const existing = this.connectionFor(wanted);

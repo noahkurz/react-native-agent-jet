@@ -27,10 +27,10 @@ export function toSelector(target: Target): Selector {
 	return typeof target === "string" ? { text: target } : target;
 }
 
-const ID_AS_THE_TREE_PRINTS_IT = /^#(\d+)$/;
+const ID_AS_PRINTED = /^#(\d+)$/;
 
 function matchesId(node: UINode, needle: string): boolean {
-	const printed = ID_AS_THE_TREE_PRINTS_IT.exec(needle);
+	const printed = ID_AS_PRINTED.exec(needle);
 	return String(node.id) === (printed ? printed[1] : needle);
 }
 
