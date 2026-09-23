@@ -178,7 +178,14 @@ With no `platform`, tools use the active app (the most recently connected, or wh
 npx react-native-agent-jet mcp
 ```
 
-It listens for the app on `ws://localhost:8765` (override with `AGENT_JET_PORT`, and pass a matching `url` to `useAgentJet`).
+It listens for the app on `ws://localhost:8765`. To move both ends off that port — when a second app or editor already holds it — set `AGENT_JET_PORT` for the server and start the app with the same number in `EXPO_PUBLIC_AGENT_JET_PORT`:
+
+```bash
+AGENT_JET_PORT=8766 …            # the MCP server, in .mcp.json or your shell
+EXPO_PUBLIC_AGENT_JET_PORT=8766 npx expo start
+```
+
+`useAgentJet({ url })` still overrides both. `doctor` reports whether the two ends agree.
 
 ---
 
@@ -248,7 +255,7 @@ Passing a `queryClient` to `useAgentJet` adds a `queries` key summarizing the Ta
 
 Every element tool takes a `target`:
 
-- **A string** matches a `testID` exactly, or text / label / placeholder / value by case-insensitive substring, or `#id` from the tree.
+- **A string** matches a `testID` exactly, or text / label / placeholder / value by case-insensitive substring, or an id from the tree — `"#11"` exactly as printed, or `"11"`.
 - **An object** narrows by field: `{ testID }`, `{ text, exact: true }`, `{ label }`, `{ type: "TextInput", index: 1 }`.
 
 `press` targets the nearest pressable, so `press("Save")` works whether the label sits on the button or inside it.
@@ -337,7 +344,8 @@ iOS itself is macOS-only because the iOS Simulator is.
 ## Caveats
 
 - **iOS real taps are slow.** AXe serializes the whole accessibility tree before each gesture (several seconds on busy screens), so `press` defaults to firing `onPress` through React. Android taps via `adb` are ~100ms. Keystrokes are instant on both.
-- **Physical devices** need the host's IP on both ends: start the server with `AGENT_JET_HOST=0.0.0.0` and point the app at it with `useAgentJet({ url: "ws://<your-mac-ip>:8765" })`. The server otherwise listens on localhost only, and the connection is unauthenticated, so only do that on a network you trust. Simulators and emulators need neither.
+- **Physical devices** need the host's IP on both ends: start the server with `AGENT_JET_HOST=0.0.0.0` and point the app at it with `useAgentJet({ url: "ws://<your-mac-ip>:8765" })`, using whichever port the server listens on. The server otherwise listens on localhost only, and the connection is unauthenticated, so only do that on a network you trust. Simulators and emulators need neither.
+- **One app per port.** The server and the app find each other on a fixed port, so a second app — or a second editor driving the same app — needs its own: `AGENT_JET_PORT` on the server, `EXPO_PUBLIC_AGENT_JET_PORT` on the app. `status` says so outright when the port is already taken, and `doctor` warns when only one end has been moved.
 - **Android text** via `adb` is ASCII-only; `set_text` covers everything else.
 - **`logs` and `network` try to redact secrets — finishing the job is up to you.** Common cases are handled: values under keys like `password`, `token`, `apiKey` or `cookie`, plus JWTs and `Bearer …` values, are replaced with `[redacted]` before anything is stored. Treat that as a convenience, not a guarantee. The package cannot know what counts as sensitive in your app, and anything it does not recognise is passed through to your agent as-is, so **redacting everything your application needs redacted is your responsibility.** Field names, status and timing are always preserved, so the agent can still debug the request.
 
@@ -362,7 +370,7 @@ iOS itself is macOS-only because the iOS Simulator is.
 ```bash
 bun install
 bun run typecheck
-bun test          # 196 tests, no device needed
+bun test          # 207 tests, no device needed
 bun run build     # builds the host (MCP server + CLI) into dist/
 ```
 

@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import { WebSocketServer } from "ws";
 import type { Hello } from "../src/protocol.js";
-import { DEFAULT_PORT } from "../src/constants.js";
+import { DEFAULT_PORT, PORT_ENV } from "../src/constants.js";
 import { ENV, PACKAGE_NAME, PLAYBOOK_FILE, SERVER_KEY, SKILL_PATH } from "./constants.js";
 import { addCommand, PLAYBOOK, PLAYBOOK_MARKER, SETUP_PROMPT, SKILL, type PackageManager } from "./playbook.js";
 import { android, hasAdb } from "./android.js";
@@ -228,14 +228,22 @@ async function doctor() {
 		};
 		server.on("error", (error: NodeJS.ErrnoException) => {
 			if (error.code === "EADDRINUSE")
-				ok(`port ${port} is in use, so an MCP server is already running; ask the agent to call status`);
+				warn(
+					`port ${port} is already in use. If that is your own running MCP server, all is well — ask the agent ` +
+						`to call status. If it belongs to another app or editor, both cannot share it: give one of them its ` +
+						`own port with ${ENV.port}, and start that app with ${PORT_ENV} set to the same number.`,
+				);
 			else warn(`could not listen on port ${port}: ${error.message}`);
 			resolve();
 		});
 		server.on("listening", () => {
 			console.log(`  … waiting up to 6s for the app to connect on ws://localhost:${port}`);
 			const timer = setTimeout(() => {
-				warn("no app connected; make sure the app is running in the simulator with useAgentJet() in a dev build");
+				const theAppMustBeStartedOnThisPortToo = port !== DEFAULT_PORT;
+				warn(
+					"no app connected; make sure the app is running in the simulator with useAgentJet() in a dev build" +
+						(theAppMustBeStartedOnThisPortToo ? `, and started with ${PORT_ENV}=${port}` : ""),
+				);
 				finish();
 			}, 6000);
 			server.on("connection", (socket) => {

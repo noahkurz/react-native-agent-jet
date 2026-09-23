@@ -27,6 +27,13 @@ export function toSelector(target: Target): Selector {
 	return typeof target === "string" ? { text: target } : target;
 }
 
+const ID_AS_PRINTED = /^#(\d+)$/;
+
+function matchesId(node: UINode, needle: string): boolean {
+	const printed = ID_AS_PRINTED.exec(needle);
+	return String(node.id) === (printed ? printed[1] : needle);
+}
+
 function matchesString(node: UINode, needle: string): boolean {
 	return (
 		node.testID === needle ||
@@ -34,7 +41,7 @@ function matchesString(node: UINode, needle: string): boolean {
 		textMatches(node.label, needle, false) ||
 		textMatches(node.placeholder, needle, false) ||
 		textMatches(node.value, needle, false) ||
-		String(node.id) === needle
+		matchesId(node, needle)
 	);
 }
 
