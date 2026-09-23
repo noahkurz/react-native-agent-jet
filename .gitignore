@@ -4,3 +4,5 @@ dist
 .DS_Store
 *.tgz
 INTERNALS.md
+.expo
+expo-env.d.ts
