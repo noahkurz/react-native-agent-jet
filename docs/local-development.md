@@ -2,19 +2,23 @@
 
 Run `bun link` in this repo, then `bun link react-native-agent-jet` in the app, and `bun run build` here whenever the host side changes (the app side hot-reloads through Fast Refresh).
 
-`bun link` creates a symlink outside the app's root, which Metro does not watch by default. It also means the bridge would resolve `react` and `react-native` from this repo's `node_modules` instead of the app's. Add this to the app's `metro.config.js`:
+`bun link` creates a symlink outside the app's root, which Metro does not watch by default. It also means the bridge would resolve `react`, `react-native` and `expo` from this repo's `node_modules` instead of the app's — and the virtual modules Expo's Babel preset injects would not resolve at all. Add this to the app's `metro.config.js`:
 
 ```js
 const path = require("path");
 const fs = require("fs");
 
 const jetPath = fs.realpathSync(path.join(__dirname, "node_modules/react-native-agent-jet"));
-const singletons = ["react", "react-native"];
+
+// react and react-native must stay single copies, and expo (including the virtual modules
+// babel-preset-expo injects, such as expo/virtual/env) only exists in the app.
+const appOwns = (moduleName) =>
+	["react", "react-native", "expo"].includes(moduleName) || moduleName.startsWith("expo/");
 
 config.watchFolders = [...(config.watchFolders ?? []), jetPath];
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-	if (singletons.includes(moduleName) && context.originModulePath.startsWith(jetPath)) {
+	if (appOwns(moduleName) && context.originModulePath.startsWith(jetPath)) {
 		return context.resolveRequest(
 			{ ...context, originModulePath: path.join(__dirname, "index.js") },
 			moduleName,

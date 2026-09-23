@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { ANDROID_EMULATOR_HOST, DEFAULT_PORT, LOCALHOST } from "./constants";
+import { ANDROID_EMULATOR_HOST, configuredPort, DEFAULT_PORT, LOCALHOST } from "./constants";
 import { originalConsole } from "./capture";
 import { deviceInfo, dispatch } from "./dispatch";
 import { HELLO, type Hello, type Request, type Response } from "./protocol";
@@ -12,7 +12,7 @@ const RECONNECT_MS = 250;
 
 export function defaultUrl(): string {
 	const host = Platform.OS === "android" ? ANDROID_EMULATOR_HOST : LOCALHOST;
-	return `ws://${host}:${DEFAULT_PORT}`;
+	return `ws://${host}:${configuredPort()}`;
 }
 
 type Shared = {

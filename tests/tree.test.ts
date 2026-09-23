@@ -324,6 +324,17 @@ describe("finding nodes", () => {
 		expect((await find("add to CART", false)).map((m) => m.node.text)).toEqual(["Add to cart"]);
 	});
 
+	test("an id matches whether or not it carries the # the tree prints", async () => {
+		const [first] = await find("Add to cart", false);
+		const id = first!.node.id;
+		expect((await find(`#${id}`, false)).map((m) => m.node.id)).toEqual([id]);
+		expect((await find(String(id), false)).map((m) => m.node.id)).toEqual([id]);
+	});
+
+	test("an id that is not on screen matches nothing rather than the wrong node", async () => {
+		expect(await find("#99999", false)).toEqual([]);
+	});
+
 	test("a string matches a testID exactly", async () => {
 		expect((await find("checkout", false))[0]!.node.testID).toBe("checkout");
 	});
@@ -355,5 +366,12 @@ describe("a pathologically deep tree", () => {
 	test("refuses a tree deeper than the walk limit instead of overflowing the stack", () => {
 		mountTree(fiber({}, [chainOfDepth(MAX_WALK_DEPTH + 10)]));
 		expect(() => snapshot()).toThrow(/deeper than 3000 levels/);
+	});
+});
+
+describe("targets that look like ids", () => {
+	test("text beginning with # is still matched as text, not read as an id", async () => {
+		mountTree(fiber({}, [host("View", { onPress: () => {} }, [host("RCTText", {}, [textNode("#1 priority")])])]));
+		expect((await find("#1 priority", false)).map((m) => m.node.text)).toEqual(["#1 priority"]);
 	});
 });

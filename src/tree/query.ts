@@ -27,6 +27,14 @@ export function toSelector(target: Target): Selector {
 	return typeof target === "string" ? { text: target } : target;
 }
 
+/** How the tree prints ids, so "#13" can be pasted straight back as a target. */
+const PRINTED_ID = /^#(\d+)$/;
+
+function matchesId(node: UINode, needle: string): boolean {
+	const printed = PRINTED_ID.exec(needle);
+	return String(node.id) === (printed ? printed[1] : needle);
+}
+
 function matchesString(node: UINode, needle: string): boolean {
 	return (
 		node.testID === needle ||
@@ -34,7 +42,7 @@ function matchesString(node: UINode, needle: string): boolean {
 		textMatches(node.label, needle, false) ||
 		textMatches(node.placeholder, needle, false) ||
 		textMatches(node.value, needle, false) ||
-		String(node.id) === needle
+		matchesId(node, needle)
 	);
 }
 

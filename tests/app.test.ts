@@ -251,3 +251,43 @@ describe("shutdown", () => {
 		expect(activeTimerCount()).toBe(0);
 	});
 });
+
+describe("a port it cannot bind", () => {
+	async function serveOnTakenPort(): Promise<AppConnection> {
+		const holder = await serve();
+		const second = new AppConnection(holder.port);
+		servers.push(second);
+		await second.listening.catch(() => {});
+		return second;
+	}
+
+	test("says the port is taken, names it, and points at both overrides", async () => {
+		const blocked = await serveOnTakenPort();
+		expect(blocked.listenFailure).toContain(`Port ${blocked.port} is already in use`);
+		expect(blocked.listenFailure).toContain("AGENT_JET_PORT");
+		expect(blocked.listenFailure).toContain("EXPO_PUBLIC_AGENT_JET_PORT");
+	});
+
+	test("a request fails at once, blaming the server rather than the app's setup", async () => {
+		const blocked = await serveOnTakenPort();
+		const failure = await blocked.request("ping", {}, undefined).catch((error: Error) => error.message);
+		expect(failure).toContain("already in use");
+		expect(failure).not.toContain("useAgentJet");
+	});
+
+	test("a call already waiting is told at once, not left until the timeout", async () => {
+		const holder = await serve();
+		const blocked = new AppConnection(holder.port);
+		servers.push(blocked);
+
+		const waitingBeforeTheFailureArrives = blocked
+			.request("ping", {}, undefined)
+			.catch((error: Error) => error.message);
+		await expect(waitingBeforeTheFailureArrives).resolves.toContain("already in use");
+	});
+
+	test("a server that binds reports no failure", async () => {
+		const app = await serve();
+		expect(app.listenFailure).toBeNull();
+	});
+});

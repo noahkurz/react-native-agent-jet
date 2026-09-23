@@ -7,6 +7,7 @@ import {
 	type MethodName,
 	type Response,
 } from "../src/protocol.js";
+import { PORT_ENV } from "../src/constants.js";
 import type { Platform } from "./device.js";
 import {
 	CLOSE_TIMEOUT_MS,
@@ -40,6 +41,7 @@ export class AppConnection {
 	private nextId = 1;
 	private waiters: Waiter[] = [];
 	private closed = false;
+	private bindError: NodeJS.ErrnoException | null = null;
 	preferred: Platform | null = (process.env[ENV.platform] as Platform | undefined) ?? null;
 
 	private readonly server: WebSocketServer;
@@ -55,7 +57,11 @@ export class AppConnection {
 		this.server = server;
 		this.listening = safeToIgnore(
 			new Promise<void>((resolve, reject) => {
-				const failStartup = (error: Error) => reject(error);
+				const failStartup = (error: NodeJS.ErrnoException) => {
+					this.bindError = error;
+					for (const waiter of [...this.waiters]) waiter.cancel(new Error(this.listenFailure ?? error.message));
+					reject(error);
+				};
 				server.once("error", failStartup);
 				server.once("listening", () => {
 					server.off("error", failStartup);
@@ -93,6 +99,23 @@ export class AppConnection {
 				resolve();
 			});
 		});
+	}
+
+	/**
+	 * Why the server never started listening, in words the user can act on, or null while it is.
+	 * A port already in use is the common case: a second agent-jet server, often another app's.
+	 */
+	get listenFailure(): string | null {
+		if (!this.bindError) return null;
+
+		const portIsTaken = this.bindError.code === "EADDRINUSE";
+		if (!portIsTaken) return `This server could not listen on port ${this.requestedPort}: ${this.bindError.message}`;
+
+		return (
+			`Port ${this.requestedPort} is already in use, so this server is not listening and no app can reach it. ` +
+			`Another agent-jet server has it — a second editor, or another app's session. ` +
+			`Give this one its own port with ${ENV.port}, and start the app with ${PORT_ENV} set to the same number.`
+		);
 	}
 
 	get port(): number {
@@ -186,6 +209,9 @@ export class AppConnection {
 
 	private waitForConnection(platform?: Platform, timeoutMs = CONNECT_WAIT_MS): Promise<Connection> {
 		if (this.closed) return Promise.reject(new Error(SHUTDOWN_MESSAGE));
+
+		const problem = this.listenFailure;
+		if (problem) return Promise.reject(new Error(problem));
 
 		const wanted = platform ?? this.preferred ?? undefined;
 		const existing = this.connectionFor(wanted);

@@ -54,6 +54,7 @@ export function registerInspectTools(server: McpServer, { app, lastTree }: ToolC
 					ios: { simulator: await ios.name(), axeInstalled: await ios.hasInput() },
 					android: { device: adbInstalled ? await android.name() : null, adbInstalled },
 					websocketPort: app.port,
+					...(app.listenFailure && { serverError: app.listenFailure }),
 				}),
 			);
 		},
