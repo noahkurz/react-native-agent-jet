@@ -1,3 +1,5 @@
 node_modules
 dist
 bun.lock
+.expo
+expo-env.d.ts

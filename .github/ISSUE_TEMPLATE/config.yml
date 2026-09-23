@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setup trouble
+    url: https://github.com/noahkurz/react-native-agent-jet#setup
+    about: Run `npx react-native-agent-jet doctor` first — it checks each step and names the one that failed.

@@ -1,0 +1,65 @@
+name: Bug report
+description: Something in the tools, the bridge, or the CLI does not behave as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most reports come down to what the agent asked for and what came back. The `doctor`
+        output below answers half the questions up front, so please include it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you asked the agent to do, the tool call it made, and what came back.
+      placeholder: |
+        press with target "Checkout" returned "No visible element matches", but tree shows it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `npx react-native-agent-jet doctor`
+      description: Run it from your app's root. Paste the whole thing.
+      render: text
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      multiple: true
+      options:
+        - iOS Simulator
+        - Android emulator
+        - Physical device
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: The package, plus React Native or Expo SDK, and whether you run Expo Go or a dev build.
+      placeholder: react-native-agent-jet 0.11.0, Expo SDK 57, Expo Go
+    validations:
+      required: true
+
+  - type: textarea
+    id: tree
+    attributes:
+      label: Relevant `tree` output
+      description: If the report is about an element, the tree around it says more than a screenshot.
+      render: text
+    validations:
+      required: false

@@ -1,0 +1,26 @@
+name: Feature request
+description: Something the agent cannot see or do yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What the agent cannot do today
+      description: The task you were driving, and where it got stuck.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you have in mind
+      description: A tool, an argument, a different reply — whatever shape you think it takes.
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do instead right now
+    validations:
+      required: false
