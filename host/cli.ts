@@ -203,12 +203,6 @@ async function registeredClients(cwd: string): Promise<string[]> {
 	return found;
 }
 
-/** The app dials a port of its own, so a server moved off the default needs the app moved with it. */
-function portAdvice(hostPort: number): string {
-	if (hostPort === DEFAULT_PORT) return "";
-	return `, and started with ${PORT_ENV}=${hostPort} — this server is not on the default port`;
-}
-
 async function doctor() {
 	const cwd = process.cwd();
 	console.log("\nreact-native-agent-jet doctor\n");
@@ -245,8 +239,10 @@ async function doctor() {
 		server.on("listening", () => {
 			console.log(`  … waiting up to 6s for the app to connect on ws://localhost:${port}`);
 			const timer = setTimeout(() => {
+				const theAppMustBeStartedOnThisPortToo = port !== DEFAULT_PORT;
 				warn(
-					`no app connected; make sure the app is running in the simulator with useAgentJet() in a dev build${portAdvice(port)}`,
+					"no app connected; make sure the app is running in the simulator with useAgentJet() in a dev build" +
+						(theAppMustBeStartedOnThisPortToo ? `, and started with ${PORT_ENV}=${port}` : ""),
 				);
 				finish();
 			}, 6000);

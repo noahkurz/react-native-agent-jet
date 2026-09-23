@@ -101,10 +101,6 @@ export class AppConnection {
 		});
 	}
 
-	/**
-	 * Why the server never started listening, in words the user can act on, or null while it is.
-	 * A port already in use is the common case: a second agent-jet server, often another app's.
-	 */
 	get listenFailure(): string | null {
 		if (!this.bindError) return null;
 
